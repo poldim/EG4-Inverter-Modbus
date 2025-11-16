@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure the Modbus Interface",
+        "data": {
+          "name": "Sensor prefix used in HA",
+          "host": "Host (IP address)",
+          "port": "Port (e.g., 502)",
+          "slave": "Modbus Slave ID (e.g., 1)",
+          "scan_interval": "Polling period in seconds",
+          "enable_read_sensors": "Enable ALL sensors (NOT RECOMMENDED)",
+          "enable_write_sensors": "Enable Write Sensors (AT YOUR OWN RISK)"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Device is already configured"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EG4 Inverter Modbus Options",
+        "data": {
+          "host": "Host (IP address)",
+          "port": "Port (e.g., 502)",
+          "slave": "Modbus Slave ID (e.g., 1)",
+          "scan_interval": "Polling period in seconds",
+          "enable_read_sensors": "Enable ALL sensors (NOT RECOMMENDED)",
+          "enable_write_sensors": "Enable Write Sensors (AT YOUR OWN RISK)"
+        }
+      }
+    }
+  }
+}
