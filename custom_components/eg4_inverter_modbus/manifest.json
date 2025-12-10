@@ -1,15 +1,15 @@
 {
-  "version": "0.0.1",
+  "domain": "eg4_inverter_modbus",
+  "name": "EG4 Inverter Modbus",
   "codeowners": ["@poldim"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/poldim/EG4-Inverter-Modbus",
-  "issue_tracker": "https://github.com/poldim/EG4-Inverter-Modbus/issues",
-  "domain": "eg4_inverter_modbus",
   "iot_class": "local_polling",
-  "name": "EG4 Inverter Modbus",
+  "issue_tracker": "https://github.com/poldim/EG4-Inverter-Modbus/issues",
   "requirements": [
     "pymodbus>=3.11.0",
     "packaging"
-  ]
+  ],
+  "version": "0.0.1"
 }
