@@ -60,11 +60,11 @@ async def async_setup_entry(
             # Skip if address is somehow not an int (shouldn't happen with our logic, unless key is str and no address)
             # If key is string (new registers), address MUST be set.
             if not isinstance(address, int):
-                 # Fallback: if key is int, use it.
-                 if isinstance(key, int):
-                     address = key
-                 else:
-                     continue
+                # Fallback: if key is int, use it.
+                if isinstance(key, int):
+                    address = key
+                else:
+                    continue
 
             is_enabled = description.entity_registry_enabled_default
             if enable_read_sensors:
