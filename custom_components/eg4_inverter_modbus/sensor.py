@@ -41,16 +41,31 @@ async def async_setup_entry(
     enable_read_sensors = entry.options.get(CONF_ENABLE_READ_SENSORS, False)
 
     # Create sensors from Input Registers
-    for description in INPUT_REGISTERS.values():
+    for key, description in INPUT_REGISTERS.items():
         if isinstance(description, EG4ModbusSensorEntityDescription):
+            # For iteration, we might iterate values or items. OLD code iterated values.
+            # But keys in INPUT_REGISTERS are ints.
+            # No changes needed for Input Registers loop if we iterate values, 
+            # as they don't seem to use bitmask addressing in this list?
+            # Actually, let's keep it safe.
             is_enabled = description.entity_registry_enabled_default
             if enable_read_sensors:
                 is_enabled = True
             entities.append(EG4Sensor(hub, device_info, description, is_enabled))
 
     # Create sensors from Holding Registers
-    for description in HOLDING_REGISTERS.values():
+    for key, description in HOLDING_REGISTERS.items():
         if isinstance(description, EG4ModbusSensorEntityDescription):
+            address = description.address if description.address is not None else key
+            # Skip if address is somehow not an int (shouldn't happen with our logic, unless key is str and no address)
+            # If key is string (new registers), address MUST be set.
+            if not isinstance(address, int):
+                # Fallback: if key is int, use it.
+                if isinstance(key, int):
+                    address = key
+                else:
+                    continue
+
             is_enabled = description.entity_registry_enabled_default
             if enable_read_sensors:
                 is_enabled = True
