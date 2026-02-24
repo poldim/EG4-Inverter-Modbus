@@ -41,8 +41,12 @@ async def async_setup_entry(
     
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
 
-    for address, description in HOLDING_REGISTERS.items():
+    for key, description in HOLDING_REGISTERS.items():
         if isinstance(description, EG4ModbusNumberEntityDescription):
+            address = description.address if description.address is not None else key
+            if not isinstance(address, int):
+                continue
+                
             # Calculate the desired state without modifying the global description
             is_enabled = description.entity_registry_enabled_default
             if enable_write_sensors:
@@ -68,7 +72,7 @@ class EG4Number(CoordinatorEntity[EG4ModbusHub], NumberEntity):
         device_info: dict,
         description: EG4ModbusNumberEntityDescription,
         address: int,
-        enabled_default: bool,  # <-- Add this argument
+        enabled_default: bool,
     ):
         """Initialize the number entity."""
         super().__init__(coordinator=hub)
@@ -76,7 +80,7 @@ class EG4Number(CoordinatorEntity[EG4ModbusHub], NumberEntity):
         self._attr_device_info = device_info
         self._attr_unique_id = f"{hub.name}_{description.key}"
         self._attr_name = description.name
-        self._attr_entity_enabled_default = enabled_default  # <-- Use the argument
+        self._attr_entity_enabled_default = enabled_default
         self._address = address
 
     @property
@@ -90,9 +94,17 @@ class EG4Number(CoordinatorEntity[EG4ModbusHub], NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""
         scaled_value = int(value / self.entity_description.scale)
-        if await self.hass.async_add_executor_job(
-            self.coordinator.write_register, self._address, scaled_value
-        ):
+        
+        if self.entity_description.bit_mask is not None:
+             success = await self.hass.async_add_executor_job(
+                self.coordinator.write_masked_register, self._address, scaled_value, self.entity_description.bit_mask
+            )
+        else:
+             success = await self.hass.async_add_executor_job(
+                self.coordinator.write_register, self._address, scaled_value
+            )
+
+        if success:
             self.coordinator.data[self.entity_description.key] = value
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()

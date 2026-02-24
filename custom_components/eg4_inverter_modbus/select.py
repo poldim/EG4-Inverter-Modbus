@@ -41,8 +41,12 @@ async def async_setup_entry(
     
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
 
-    for address, description in HOLDING_REGISTERS.items():
+    for key, description in HOLDING_REGISTERS.items():
         if isinstance(description, EG4ModbusSelectEntityDescription):
+            address = description.address if description.address is not None else key
+            if not isinstance(address, int):
+                continue
+
             # Calculate the desired state without modifying the global description
             is_enabled = description.entity_registry_enabled_default
             if enable_write_sensors:
@@ -67,7 +71,7 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         device_info: dict,
         description: EG4ModbusSelectEntityDescription,
         address: int,
-        enabled_default: bool,  # <-- Add this argument
+        enabled_default: bool,
     ):
         """Initialize the select entity."""
         super().__init__(coordinator=hub)
@@ -75,7 +79,7 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         self._attr_device_info = device_info
         self._attr_unique_id = f"{hub.name}_{description.key}"
         self._attr_name = description.name
-        self._attr_entity_enabled_default = enabled_default  # <-- Use the argument
+        self._attr_entity_enabled_default = enabled_default
         self._address = address
 
     @property
@@ -98,9 +102,16 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         """Change the selected option."""
         try:
             index = self.entity_description.options.index(option)
-            if await self.hass.async_add_executor_job(
-                self.coordinator.write_register, self._address, index
-            ):
+            if self.entity_description.bit_mask is not None:
+                success = await self.hass.async_add_executor_job(
+                    self.coordinator.write_masked_register, self._address, index, self.entity_description.bit_mask
+                )
+            else:
+                success = await self.hass.async_add_executor_job(
+                    self.coordinator.write_register, self._address, index
+                )
+                
+            if success:
                 self.coordinator.data[self.entity_description.key] = index
                 self.async_write_ha_state()
                 await self.coordinator.async_request_refresh()
