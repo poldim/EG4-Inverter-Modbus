@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Synology
+@eaDir/
+
+.venv
+
+test_time_logic.py
+.DS_Store
+

@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.select import SelectEntityDescription
+from homeassistant.components.time import TimeEntityDescription
 from homeassistant.helpers.entity import EntityCategory
 
 from homeassistant.const import (
@@ -26,7 +27,6 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-
 DOMAIN = "eg4_inverter_modbus"
 DEFAULT_NAME = "EG4"
 DEFAULT_SCAN_INTERVAL = 10
@@ -37,7 +37,7 @@ ATTR_MANUFACTURER = "EG4"
 CONF_ENABLE_READ_SENSORS = "enable_read_sensors"
 CONF_ENABLE_WRITE_SENSORS = "enable_write_sensors"
 
-@dataclass
+@dataclass(frozen=True, kw_only=True)
 class EG4ModbusSensorEntityDescription(SensorEntityDescription):
     """A class that describes EG4 sensor entities."""
     entity_category: Optional[EntityCategory] = None
@@ -46,14 +46,14 @@ class EG4ModbusSensorEntityDescription(SensorEntityDescription):
     address: Optional[int] = None
     bit_mask: Optional[int] = None
 
-@dataclass
+@dataclass(frozen=True, kw_only=True)
 class EG4ModbusBinarySensorEntityDescription(BinarySensorEntityDescription):
     """A class that describes EG4 binary sensor entities."""
     entity_category: Optional[EntityCategory] = None
     entity_registry_enabled_default: bool = True
 
 
-@dataclass
+@dataclass(frozen=True, kw_only=True)
 class EG4ModbusNumberEntityDescription(NumberEntityDescription):
     """A class that describes EG4 number entities."""
     entity_category: Optional[EntityCategory] = EntityCategory.CONFIG
@@ -63,7 +63,7 @@ class EG4ModbusNumberEntityDescription(NumberEntityDescription):
     bit_mask: Optional[int] = None
 
 
-@dataclass
+@dataclass(frozen=True, kw_only=True)
 class EG4ModbusSelectEntityDescription(SelectEntityDescription):
     """A class that describes EG4 select entities."""
     entity_category: Optional[EntityCategory] = EntityCategory.CONFIG
@@ -72,13 +72,19 @@ class EG4ModbusSelectEntityDescription(SelectEntityDescription):
     bit_mask: Optional[int] = None
 
 
-# --- Input Registers (Function Code 0x04) ---
+@dataclass(frozen=True, kw_only=True)
+class EG4ModbusTimeEntityDescription(TimeEntityDescription):
+    """Describes EG4 Modbus time entity."""
+    address: Optional[int] = None
+
+
+# --- Input Registers (Function Code 0x04), ---
 INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
-    0: EG4ModbusSensorEntityDescription(key="inverter_state", name="Inverter State", icon="mdi:information-outline"),
+    0: EG4ModbusSensorEntityDescription(key="inverter_mode", name="Inverter Mode", icon="mdi:information-outline"),
     1: EG4ModbusSensorEntityDescription(key="voltage_pv1", name="Voltage PV1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
     2: EG4ModbusSensorEntityDescription(key="voltage_pv2", name="Voltage PV2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
     3: EG4ModbusSensorEntityDescription(key="voltage_pv3", name="Voltage PV3", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    4: EG4ModbusSensorEntityDescription(key="voltage_battery", name="Voltage Battery", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
+    4: EG4ModbusSensorEntityDescription(key="voltage_battery", name="Battery Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
     5: EG4ModbusSensorEntityDescription(key="battery_soc", name="Battery SOC", native_unit_of_measurement=PERCENTAGE, device_class=SensorDeviceClass.BATTERY, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
     6: EG4ModbusSensorEntityDescription(key="battery_soh", name="Battery SOH", native_unit_of_measurement=PERCENTAGE, state_class=SensorStateClass.MEASUREMENT, icon="mdi:heart-pulse", suggested_display_precision=1),
     7: EG4ModbusSensorEntityDescription(key="power_pv1", name="Power PV1", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:solar-power", suggested_display_precision=0),
@@ -86,20 +92,20 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     9: EG4ModbusSensorEntityDescription(key="power_pv3", name="Power PV3", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:solar-power", suggested_display_precision=0),
     10: EG4ModbusSensorEntityDescription(key="power_battery_charge", name="Power Battery Charge", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
     11: EG4ModbusSensorEntityDescription(key="power_battery_discharge", name="Power Battery Discharge", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
-    12: EG4ModbusSensorEntityDescription(key="voltage_grid_l1l2", name="Voltage Grid L1-L2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
-    13: EG4ModbusSensorEntityDescription(key="voltage_grid_l2l3", name="Voltage Grid L2-L3", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    14: EG4ModbusSensorEntityDescription(key="voltage_grid_l3l1", name="Voltage Grid L3-L1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    12: EG4ModbusSensorEntityDescription(key="voltage_grid_l1l2", name="Voltage Grid L1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
+    13: EG4ModbusSensorEntityDescription(key="voltage_grid_l2l3", name="Voltage Grid L2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    14: EG4ModbusSensorEntityDescription(key="voltage_grid_l3l1", name="Voltage Grid L3", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
     15: EG4ModbusSensorEntityDescription(key="frequency_grid", name="Frequency Grid", native_unit_of_measurement=UnitOfFrequency.HERTZ, device_class=SensorDeviceClass.FREQUENCY, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=2, entity_registry_enabled_default=False),
-    16: EG4ModbusSensorEntityDescription(key="power_inverter_on_grid_l1", name="Power Inverter On Grid L1", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    16: EG4ModbusSensorEntityDescription(key="power_inverter_output", name="Power Inverter Output", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
     17: EG4ModbusSensorEntityDescription(key="power_ac_charge", name="Power AC Charge", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
-    18: EG4ModbusSensorEntityDescription(key="current_inverter_rms_l1", name="Current Inverter RMS L1", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
-    19: EG4ModbusSensorEntityDescription(key="power_factor_inverter_l1", name="Power Factor Inverter L1", device_class=SensorDeviceClass.POWER_FACTOR, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    20: EG4ModbusSensorEntityDescription(key="voltage_eps_l1l2", name="Voltage EPS L1-L2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
-    21: EG4ModbusSensorEntityDescription(key="voltage_eps_l2l3", name="Voltage EPS L2-L3", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    22: EG4ModbusSensorEntityDescription(key="voltage_eps_l3l1", name="Voltage EPS L3-L1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    23: EG4ModbusSensorEntityDescription(key="frequency_eps", name="Frequency EPS", native_unit_of_measurement=UnitOfFrequency.HERTZ, device_class=SensorDeviceClass.FREQUENCY, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=2, entity_registry_enabled_default=False),
-    24: EG4ModbusSensorEntityDescription(key="power_eps", name="Power EPS", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
-    25: EG4ModbusSensorEntityDescription(key="power_apparent_eps", name="Power Apparent EPS", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False),
+    18: EG4ModbusSensorEntityDescription(key="current_inverter_rms", name="Current Inverter RMS", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
+    19: EG4ModbusSensorEntityDescription(key="power_factor_inverter", name="Power Factor Inverter", device_class=SensorDeviceClass.POWER_FACTOR, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    20: EG4ModbusSensorEntityDescription(key="voltage_inverter_l1l2", name="Voltage Inverter L1-L2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
+    21: EG4ModbusSensorEntityDescription(key="voltage_inverter_l2l3", name="Voltage Inverter L2-L3", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    22: EG4ModbusSensorEntityDescription(key="voltage_inverter_l3l1", name="Voltage Inverter L3-L1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    23: EG4ModbusSensorEntityDescription(key="frequency_inverter", name="Frequency Inverter", native_unit_of_measurement=UnitOfFrequency.HERTZ, device_class=SensorDeviceClass.FREQUENCY, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=2, entity_registry_enabled_default=False),
+    24: EG4ModbusSensorEntityDescription(key="power_inverter", name="Power Inverter", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    25: EG4ModbusSensorEntityDescription(key="power_apparent_inverter", name="Power Apparent Inverter", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False),
     26: EG4ModbusSensorEntityDescription(key="power_grid_export", name="Power Grid Export", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:transmission-tower-export"),
     27: EG4ModbusSensorEntityDescription(key="power_grid_import", name="Power Grid Import", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:transmission-tower-import"),
     28: EG4ModbusSensorEntityDescription(key="energy_daily_pv1", name="Energy Daily PV1", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, icon="mdi:solar-power"),
@@ -109,11 +115,11 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     32: EG4ModbusSensorEntityDescription(key="energy_daily_ac_charge", name="Energy Daily AC Charge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
     33: EG4ModbusSensorEntityDescription(key="energy_daily_battery_charge", name="Energy Daily Battery Charge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
     34: EG4ModbusSensorEntityDescription(key="energy_daily_battery_discharge", name="Energy Daily Battery Discharge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
-    35: EG4ModbusSensorEntityDescription(key="energy_daily_eps", name="Energy Daily EPS", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
+    35: EG4ModbusSensorEntityDescription(key="energy_daily_inverter", name="Energy Daily Inverter", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
     36: EG4ModbusSensorEntityDescription(key="energy_daily_grid_export", name="Energy Daily Grid Export", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
     37: EG4ModbusSensorEntityDescription(key="energy_daily_grid_import", name="Energy Daily Grid Import", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1),
-    38: EG4ModbusSensorEntityDescription(key="voltage_bus_1", name="Voltage Bus 1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False, suggested_display_precision=1),
-    39: EG4ModbusSensorEntityDescription(key="voltage_bus_2", name="Voltage Bus 2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False, suggested_display_precision=1),
+    38: EG4ModbusSensorEntityDescription(key="voltage_bus_1", name="Voltage Bus 1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False),
+    39: EG4ModbusSensorEntityDescription(key="voltage_bus_2", name="Voltage Bus 2", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False),
     40: EG4ModbusSensorEntityDescription(key="energy_cumulative_pv1", name="Energy Cumulative PV1", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     42: EG4ModbusSensorEntityDescription(key="energy_cumulative_pv2", name="Energy Cumulative PV2", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     44: EG4ModbusSensorEntityDescription(key="energy_cumulative_pv3", name="Energy Cumulative PV3", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
@@ -121,7 +127,7 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     48: EG4ModbusSensorEntityDescription(key="energy_cumulative_ac_charge", name="Energy Cumulative AC Charge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     50: EG4ModbusSensorEntityDescription(key="energy_cumulative_battery_charge", name="Energy Cumulative Battery Charge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     52: EG4ModbusSensorEntityDescription(key="energy_cumulative_battery_discharge", name="Energy Cumulative Battery Discharge", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
-    54: EG4ModbusSensorEntityDescription(key="energy_cumulative_eps", name="Energy Cumulative EPS", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
+    54: EG4ModbusSensorEntityDescription(key="energy_cumulative_inverter", name="Energy Cumulative Inverter", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     56: EG4ModbusSensorEntityDescription(key="energy_cumulative_grid_export", name="Energy Cumulative Grid Export", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     58: EG4ModbusSensorEntityDescription(key="energy_cumulative_grid_import", name="Energy Cumulative Grid Import", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     60: EG4ModbusSensorEntityDescription(key="fault_code", name="Fault Code", icon="mdi:alert-octagon", entity_category=EntityCategory.DIAGNOSTIC),
@@ -150,7 +156,7 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     95: EG4ModbusSensorEntityDescription(key="bms_status_inv", name="BMS Status Inverter Summary", icon="mdi:battery-heart-variant", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     96: EG4ModbusSensorEntityDescription(key="battery_parallel_num", name="Battery Parallel Number", icon="mdi:battery-plus-variant", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     97: EG4ModbusSensorEntityDescription(key="battery_capacity_ah", name="Battery Capacity", native_unit_of_measurement="Ah", icon="mdi:battery-charging", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
-    98: EG4ModbusSensorEntityDescription(key="bms_current_battery", name="BMS Current Battery", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
+    98: EG4ModbusSensorEntityDescription(key="bms_current_battery", name="Battery Current", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1),
     99: EG4ModbusSensorEntityDescription(key="bms_fault_code", name="Fault Code BMS", icon="mdi:alert-octagon", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     100: EG4ModbusSensorEntityDescription(key="bms_warning_code", name="Warning Code BMS", icon="mdi:alert-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     101: EG4ModbusSensorEntityDescription(key="bms_voltage_max_cell", name="BMS Voltage Max Cell", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=3),
@@ -172,16 +178,16 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     123: EG4ModbusSensorEntityDescription(key="power_generator", name="Power Generator", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
     124: EG4ModbusSensorEntityDescription(key="energy_daily_generator", name="Energy Daily Generator", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     125: EG4ModbusSensorEntityDescription(key="energy_cumulative_generator", name="Energy Cumulative Generator", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
-    127: EG4ModbusSensorEntityDescription(key="voltage_eps_l1n", name="Voltage EPS L1-N", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    128: EG4ModbusSensorEntityDescription(key="voltage_eps_l2n", name="Voltage EPS L2-N", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
-    129: EG4ModbusSensorEntityDescription(key="power_eps_l1n", name="Power EPS L1-N", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
-    130: EG4ModbusSensorEntityDescription(key="power_eps_l2n", name="Power EPS L2-N", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
-    131: EG4ModbusSensorEntityDescription(key="power_apparent_eps_l1n", name="Power Apparent EPS L1-N", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
-    132: EG4ModbusSensorEntityDescription(key="power_apparent_eps_l2n", name="Power Apparent EPS L2-N", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
-    133: EG4ModbusSensorEntityDescription(key="energy_daily_eps_l1n", name="Energy Daily EPS L1-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
-    134: EG4ModbusSensorEntityDescription(key="energy_daily_eps_l2n", name="Energy Daily EPS L2-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
-    135: EG4ModbusSensorEntityDescription(key="energy_cumulative_eps_l1n", name="Energy Cumulative EPS L1-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
-    137: EG4ModbusSensorEntityDescription(key="energy_cumulative_eps_l2n", name="Energy Cumulative EPS L2-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
+    127: EG4ModbusSensorEntityDescription(key="voltage_inverter_l1n", name="Voltage Inverter L1-N", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    128: EG4ModbusSensorEntityDescription(key="voltage_inverter_l2n", name="Voltage Inverter L2-N", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
+    129: EG4ModbusSensorEntityDescription(key="power_inverter_l1n", name="Power Inverter L1-N", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
+    130: EG4ModbusSensorEntityDescription(key="power_inverter_l2n", name="Power Inverter L2-N", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
+    131: EG4ModbusSensorEntityDescription(key="power_apparent_inverter_l1n", name="Power Apparent Inverter L1-N", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
+    132: EG4ModbusSensorEntityDescription(key="power_apparent_inverter_l2n", name="Power Apparent Inverter L2-N", native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE, device_class=SensorDeviceClass.APPARENT_POWER, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0, entity_registry_enabled_default=False),
+    133: EG4ModbusSensorEntityDescription(key="energy_daily_inverter_l1n", name="Energy Daily Inverter L1-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
+    134: EG4ModbusSensorEntityDescription(key="energy_daily_inverter_l2n", name="Energy Daily Inverter L2-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
+    135: EG4ModbusSensorEntityDescription(key="energy_cumulative_inverter_l1n", name="Energy Cumulative Inverter L1-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
+    137: EG4ModbusSensorEntityDescription(key="energy_cumulative_inverter_l2n", name="Energy Cumulative Inverter L2-N", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, suggested_display_precision=1, entity_registry_enabled_default=False),
     140: EG4ModbusSensorEntityDescription(key="afci_current_ch1", name="AFCI Current CH1", native_unit_of_measurement="mA", device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
     141: EG4ModbusSensorEntityDescription(key="afci_current_ch2", name="AFCI Current CH2", native_unit_of_measurement="mA", device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
     142: EG4ModbusSensorEntityDescription(key="afci_current_ch3", name="AFCI Current CH3", native_unit_of_measurement="mA", device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1, entity_registry_enabled_default=False),
@@ -218,13 +224,13 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     -2: EG4ModbusSensorEntityDescription(key="power_battery_total", name="Power Battery Total", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:home-battery-outline"),
     -3: EG4ModbusSensorEntityDescription(key="energy_daily_pv_total", name="Energy Daily PV Total", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, icon="mdi:solar-power", suggested_display_precision=1),
     -4: EG4ModbusSensorEntityDescription(key="energy_cumulative_pv", name="Energy Cumulative PV Total", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL, icon="mdi:solar-power", suggested_display_precision=1),
-    -5: EG4ModbusBinarySensorEntityDescription(key="inverter_time_accurate", name="Inverter Time Accurate", device_class=BinarySensorDeviceClass.CONNECTIVITY, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),  ### DOES NOT WORK
+    -5: EG4ModbusBinarySensorEntityDescription(key="inverter_time_accurate", name="Inverter Time Accurate", device_class=BinarySensorDeviceClass.CONNECTIVITY, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=True),
     -6: EG4ModbusSensorEntityDescription(key="parallel_master_slave", name="Parallel Master/Slave", icon="mdi:vector-combine", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     -7: EG4ModbusSensorEntityDescription(key="parallel_phase", name="Parallel Phase", icon="mdi:vector-combine", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     -8: EG4ModbusSensorEntityDescription(key="parallel_number", name="Parallel Number", icon="mdi:vector-combine", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     -9: EG4ModbusSensorEntityDescription(key="power_grid_total", name="Power Grid Total", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, icon="mdi:transmission-tower"),
     -10: EG4ModbusSensorEntityDescription(key="voltage_pv_average", name="Voltage PV Average", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, icon="mdi:solar-power", suggested_display_precision=1),
-    -11: EG4ModbusSensorEntityDescription(key="inverter_uptime_minutes", name="Inverter Uptime (minutes)", native_unit_of_measurement=UnitOfTime.MINUTES, state_class=SensorStateClass.MEASUREMENT, icon="mdi:timer-plus-outline", entity_registry_enabled_default=False),
+    -11: EG4ModbusSensorEntityDescription(key="inverter_uptime_days", name="Inverter Uptime", native_unit_of_measurement=UnitOfTime.DAYS, device_class=SensorDeviceClass.DURATION, state_class=SensorStateClass.MEASUREMENT, icon="mdi:timer-plus-outline", entity_registry_enabled_default=False),
     -12: EG4ModbusBinarySensorEntityDescription(key="afci_alarm_ch1", name="AFCI Alarm CH1", device_class=BinarySensorDeviceClass.PROBLEM, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     -13: EG4ModbusBinarySensorEntityDescription(key="afci_alarm_ch2", name="AFCI Alarm CH2", device_class=BinarySensorDeviceClass.PROBLEM, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     -14: EG4ModbusBinarySensorEntityDescription(key="afci_alarm_ch3", name="AFCI Alarm CH3", device_class=BinarySensorDeviceClass.PROBLEM, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
@@ -235,14 +241,30 @@ INPUT_REGISTERS: dict[int, EG4ModbusSensorEntityDescription] = {
     -19: EG4ModbusBinarySensorEntityDescription(key="afci_selftest_ch4", name="AFCI Self-Test CH4", device_class=BinarySensorDeviceClass.PROBLEM, entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False, icon="mdi:alert"),
 }
 
-# --- Holding Registers (Function Codes 0x03, 0x06, 0x10) ---
+# --- Holding Registers (Function Codes 0x03, 0x06, 0x10), ---
 # A single dictionary for all holding registers. The setup process will determine
 # whether to create a sensor, number, or select entity based on the description type.
-HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNumberEntityDescription, EG4ModbusSelectEntityDescription]] = {
-    9: EG4ModbusSensorEntityDescription(key="info_com_version", name="Info COM Version", icon="mdi:information-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
-    10: EG4ModbusSensorEntityDescription(key="info_controller_version", name="Info Control Version", icon="mdi:information-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
+HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNumberEntityDescription, EG4ModbusSelectEntityDescription, EG4ModbusTimeEntityDescription]] = {
+    9: EG4ModbusSensorEntityDescription(key="hardware_com_version", name="Hardware COM Version", icon="mdi:information-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
+    10: EG4ModbusSensorEntityDescription(key="hardware_controller_version", name="Hardware Control Version", icon="mdi:information-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     16: EG4ModbusSelectEntityDescription(key="setting_language", name="Language", icon="mdi:cogs", options=["English", "German"]),
-    20: EG4ModbusSelectEntityDescription(key="setting_pv_input_model", name="PV Input Model", icon="mdi:cogs", options=["No PV", "PV1 in", "PV2 in", "PV3 in", "PV1&2 in", "PV1&3 in", "PV2&3 in", "PV1&2&3 in"]),
+    20: EG4ModbusSelectEntityDescription(key="setting_pv_input_model", name="PV Input Model", icon="mdi:cogs", options=["No PV", "PV1", "PV2", "PV3", "PV1&2", "PV1&3", "PV2&3", "PV1&2&3"]),
+    2101: EG4ModbusSelectEntityDescription(key="setting_func_en_eps", name="Enable EPS", address=21, bit_mask=0x0001, options=["Disabled", "Enabled"]),
+    2102: EG4ModbusSelectEntityDescription(key="setting_func_en_ovf_load_derate", name="Enable OVF Load Derate", address=21, bit_mask=0x0002, options=["Disabled", "Enabled"]),
+    2103: EG4ModbusSelectEntityDescription(key="setting_func_en_drms", name="Enable DRMS", address=21, bit_mask=0x0004, options=["Disabled", "Enabled"]),
+    2104: EG4ModbusSelectEntityDescription(key="setting_func_en_lvrt", name="Enable LVRT", address=21, bit_mask=0x0008, options=["Disabled", "Enabled"]),
+    2105: EG4ModbusSelectEntityDescription(key="setting_func_en_anti_island", name="Enable Anti-islanding", address=21, bit_mask=0x0010, options=["Disabled", "Enabled"]),
+    2106: EG4ModbusSelectEntityDescription(key="setting_func_en_neutral_detect", name="Enable Neutral Detect", address=21, bit_mask=0x0020, options=["Disabled", "Enabled"]),
+    2107: EG4ModbusSelectEntityDescription(key="setting_func_en_grid_on_power_ss", name="Enable Grid On Power SS", address=21, bit_mask=0x0040, options=["Disabled", "Enabled"]),
+    2108: EG4ModbusSelectEntityDescription(key="setting_func_en_ac_charge", name="Enable AC Charge", address=21, bit_mask=0x0080, options=["Disabled", "Enabled"]),
+    2109: EG4ModbusSelectEntityDescription(key="setting_func_en_sw_seamlessly", name="Enable Seamless Switching", address=21, bit_mask=0x0100, options=["Disabled", "Enabled"]),
+    2110: EG4ModbusSelectEntityDescription(key="setting_func_en_set_to_standby", name="Enable Set to Standby", address=21, bit_mask=0x0200, options=["Standby", "Power on"]),
+    2111: EG4ModbusSelectEntityDescription(key="setting_func_en_forced_dischg", name="Enable Forced Discharge", address=21, bit_mask=0x0400, options=["Disabled", "Enabled"]),
+    2112: EG4ModbusSelectEntityDescription(key="setting_func_en_forced_chg", name="Enable Force Charge", address=21, bit_mask=0x0800, options=["Disabled", "Enabled"]),
+    2113: EG4ModbusSelectEntityDescription(key="setting_func_en_iso", name="Enable ISO", address=21, bit_mask=0x1000, options=["Disabled", "Enabled"]),
+    2114: EG4ModbusSelectEntityDescription(key="setting_func_en_gfci", name="Enable GFCI", address=21, bit_mask=0x2000, options=["Disabled", "Enabled"]),
+    2115: EG4ModbusSelectEntityDescription(key="setting_func_en_dci", name="Enable DCI", address=21, bit_mask=0x4000, options=["Disabled", "Enabled"]),
+    2116: EG4ModbusSelectEntityDescription(key="setting_func_en_feed_in_grid", name="Enable Feed In Grid", address=21, bit_mask=0x8000, options=["Disabled", "Enabled"]),
     22: EG4ModbusNumberEntityDescription(key="setting_voltage_pv_start", name="PV Start Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=90, native_max_value=500),
     23: EG4ModbusNumberEntityDescription(key="setting_time_grid_connection_wait", name="Grid Connection Wait Time", native_unit_of_measurement=UnitOfTime.SECONDS, icon="mdi:cogs", native_min_value=30, native_max_value=600),
     24: EG4ModbusNumberEntityDescription(key="setting_time_reconnection_wait", name="Reconnection Wait Time", native_unit_of_measurement=UnitOfTime.SECONDS, icon="mdi:cogs", native_min_value=0, native_max_value=900),
@@ -250,71 +272,71 @@ HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNu
     65: EG4ModbusNumberEntityDescription(key="setting_percent_discharge_power", name="Discharge Power Percentage", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
     66: EG4ModbusNumberEntityDescription(key="setting_percent_ac_charge_power", name="AC Charge Percentage", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
     67: EG4ModbusNumberEntityDescription(key="setting_limit_soc_ac_charge", name="AC Charging SOC Limit", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
-    90: EG4ModbusSelectEntityDescription(key="setting_voltage_eps", name="Inverter Voltage", icon="mdi:cogs", options=["230", "240", "277", "208"]),
-    91: EG4ModbusSelectEntityDescription(key="setting_frequency_eps", name="Inverter Frequency", icon="mdi:cogs", options=["50", "60"]),
+    90: EG4ModbusSelectEntityDescription(key="setting_voltage_inverter", name="Inverter Voltage", icon="mdi:cogs", options=["230", "240", "277", "208"]),
+    91: EG4ModbusSelectEntityDescription(key="setting_frequency_inverter", name="Inverter Frequency", icon="mdi:cogs", options=["50 Hz", "60 Hz"]),
     99: EG4ModbusNumberEntityDescription(key="setting_voltage_charge_ref", name="Charge Voltage Reference", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=50, native_max_value=59),
     100: EG4ModbusNumberEntityDescription(key="setting_voltage_discharge_cutoff", name="Discharge Cutoff Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=40, native_max_value=50),
     101: EG4ModbusNumberEntityDescription(key="setting_current_charge", name="Charge Current", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, icon="mdi:cogs", native_min_value=0, native_max_value=140),
     102: EG4ModbusNumberEntityDescription(key="setting_current_discharge", name="Discharge Current", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, icon="mdi:cogs", native_min_value=0, native_max_value=140),
     103: EG4ModbusNumberEntityDescription(key="setting_max_backflow_power", name="Max Backflow Power", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
     105: EG4ModbusNumberEntityDescription(key="setting_eod_soc", name="EOD SOC", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=10, native_max_value=90),
-    112: EG4ModbusSelectEntityDescription(key="setting_system_type", name="System Type", icon="mdi:cogs", options=["No Parallel", "Single Phase Parallel (Master)", "Slave", "Three Phase Parallel (Master)"]),
+    112: EG4ModbusSelectEntityDescription(key="setting_system_type", name="System Type", icon="mdi:cogs", options=["No Parallel", "Parallel - Master - Single Phase", "Slave", "Parallel - Master - Three Phase"]),
     116: EG4ModbusNumberEntityDescription(key="setting_ptouser_start_discharge", name="Ptouser Start Discharge", native_unit_of_measurement=UnitOfPower.WATT, icon="mdi:cogs", native_min_value=50, native_max_value=10000),
     118: EG4ModbusNumberEntityDescription(key="setting_voltage_start_derating", name="Voltage Start Derating", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1),
     119: EG4ModbusNumberEntityDescription(key="setting_power_offset_wct", name="Power Offset WCT", native_unit_of_measurement=UnitOfPower.WATT, icon="mdi:cogs", native_min_value=-1000, native_max_value=1000),
-    125: EG4ModbusNumberEntityDescription(key="setting_soc_low_limit_eps_discharge", name="SOC Low Limit Inverter Discharge", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_0", name="Hourly Charge Discharge 0 - 0:00-0:30", address=126, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_1", name="Hourly Charge Discharge 1 - 8:30-9:00", address=126, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_2", name="Hourly Charge Discharge 2 - 9:00-9:30", address=126, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_3", name="Hourly Charge Discharge 3 - 9:30-10:00", address=126, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_4", name="Hourly Charge Discharge 4 - 10:00-10:30", address=126, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_5", name="Hourly Charge Discharge 5 - 10:30-11:00", address=126, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_6", name="Hourly Charge Discharge 6 - 11:00-11:30", address=126, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    126: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_7", name="Hourly Charge Discharge 7 - 11:30-12:00", address=126, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_8", name="Hourly Charge Discharge 8 - 8:00-8:30", address=127, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_9", name="Hourly Charge Discharge 9 - 8:30-9:00", address=127, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_10", name="Hourly Charge Discharge 10 - 9:00-9:30", address=127, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_11", name="Hourly Charge Discharge 11 - 5:30-6:00", address=127, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_12", name="Hourly Charge Discharge 12 - 6:00-6:30", address=127, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_13", name="Hourly Charge Discharge 13 - 6:30-7:00", address=127, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_14", name="Hourly Charge Discharge 14 - 7:00-7:30", address=127, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    127: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_15", name="Hourly Charge Discharge 15 - 7:30-8:00", address=127, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_16", name="Hourly Charge Discharge 16 - 8:00-8:30", address=128, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_17", name="Hourly Charge Discharge 17 - 8:30-9:00", address=128, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_18", name="Hourly Charge Discharge 18 - 9:00-9:30", address=128, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_19", name="Hourly Charge Discharge 19 - 9:30-10:00", address=128, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_20", name="Hourly Charge Discharge 20 - 10:00-10:30", address=128, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_21", name="Hourly Charge Discharge 21 - 10:30-11:00", address=128, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_22", name="Hourly Charge Discharge 22 - 11:00-11:30", address=128, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    128: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_23", name="Hourly Charge Discharge 23 - 11:30-12:00", address=128, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_24", name="Hourly Charge Discharge 24 - 12:00-12:30", address=129, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_25", name="Hourly Charge Discharge 25 - 12:30-13:00", address=129, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_26", name="Hourly Charge Discharge 26 - 13:00-13:30", address=129, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_27", name="Hourly Charge Discharge 27 - 13:30-14:00", address=129, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_28", name="Hourly Charge Discharge 28 - 14:00-14:30", address=129, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_29", name="Hourly Charge Discharge 29 - 14:30-15:00", address=129, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_30", name="Hourly Charge Discharge 30 - 15:00-15:30", address=129, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    129: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_31", name="Hourly Charge Discharge 31 - 15:30-16:00", address=129, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_32", name="Hourly Charge Discharge 32 - 16:00-16:30", address=130, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_33", name="Hourly Charge Discharge 33 - 16:30-17:00", address=130, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_34", name="Hourly Charge Discharge 34 - 17:00-17:30", address=130, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_35", name="Hourly Charge Discharge 35 - 17:30-18:00", address=130, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_36", name="Hourly Charge Discharge 36 - 18:00-18:30", address=130, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_37", name="Hourly Charge Discharge 37 - 18:30-19:00", address=130, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_38", name="Hourly Charge Discharge 38 - 19:00-19:30", address=130, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    130: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_39", name="Hourly Charge Discharge 39 - 19:30-20:00", address=130, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_40", name="Hourly Charge Discharge 40 - 20:00-20:30", address=131, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_41", name="Hourly Charge Discharge 41 - 20:30-21:00", address=131, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_42", name="Hourly Charge Discharge 42 - 21:00-21:30", address=131, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_43", name="Hourly Charge Discharge 43 - 21:30-22:00", address=131, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_44", name="Hourly Charge Discharge 44 - 22:00-22:30", address=131, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_45", name="Hourly Charge Discharge 45 - 22:30-23:00", address=131, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_46", name="Hourly Charge Discharge 46 - 23:00-23:30", address=131, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
-    131: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_47", name="Hourly Charge Discharge 47 - 23:30-0:00", address=131, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    125: EG4ModbusNumberEntityDescription(key="setting_soc_low_limit_inverter_discharge", name="SOC Low Limit Inverter Discharge", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
+    1261: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_0", name="Hourly Charge Discharge 0 - 0:00-0:30", address=126, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1262: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_1", name="Hourly Charge Discharge 1 - 8:30-9:00", address=126, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1263: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_2", name="Hourly Charge Discharge 2 - 9:00-9:30", address=126, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1264: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_3", name="Hourly Charge Discharge 3 - 9:30-10:00", address=126, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1265: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_4", name="Hourly Charge Discharge 4 - 10:00-10:30", address=126, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1266: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_5", name="Hourly Charge Discharge 5 - 10:30-11:00", address=126, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1267: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_6", name="Hourly Charge Discharge 6 - 11:00-11:30", address=126, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1268: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_7", name="Hourly Charge Discharge 7 - 11:30-12:00", address=126, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    1271: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_8", name="Hourly Charge Discharge 8 - 8:00-8:30", address=127, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1272: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_9", name="Hourly Charge Discharge 9 - 8:30-9:00", address=127, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1273: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_10", name="Hourly Charge Discharge 10 - 9:00-9:30", address=127, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1274: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_11", name="Hourly Charge Discharge 11 - 5:30-6:00", address=127, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1275: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_12", name="Hourly Charge Discharge 12 - 6:00-6:30", address=127, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1276: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_13", name="Hourly Charge Discharge 13 - 6:30-7:00", address=127, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1277: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_14", name="Hourly Charge Discharge 14 - 7:00-7:30", address=127, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1278: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_15", name="Hourly Charge Discharge 15 - 7:30-8:00", address=127, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    1281: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_16", name="Hourly Charge Discharge 16 - 8:00-8:30", address=128, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1282: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_17", name="Hourly Charge Discharge 17 - 8:30-9:00", address=128, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1283: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_18", name="Hourly Charge Discharge 18 - 9:00-9:30", address=128, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1284: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_19", name="Hourly Charge Discharge 19 - 9:30-10:00", address=128, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1285: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_20", name="Hourly Charge Discharge 20 - 10:00-10:30", address=128, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1286: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_21", name="Hourly Charge Discharge 21 - 10:30-11:00", address=128, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1287: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_22", name="Hourly Charge Discharge 22 - 11:00-11:30", address=128, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1288: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_23", name="Hourly Charge Discharge 23 - 11:30-12:00", address=128, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    1291: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_24", name="Hourly Charge Discharge 24 - 12:00-12:30", address=129, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1292: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_25", name="Hourly Charge Discharge 25 - 12:30-13:00", address=129, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1293: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_26", name="Hourly Charge Discharge 26 - 13:00-13:30", address=129, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1294: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_27", name="Hourly Charge Discharge 27 - 13:30-14:00", address=129, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1295: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_28", name="Hourly Charge Discharge 28 - 14:00-14:30", address=129, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1296: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_29", name="Hourly Charge Discharge 29 - 14:30-15:00", address=129, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1297: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_30", name="Hourly Charge Discharge 30 - 15:00-15:30", address=129, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1298: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_31", name="Hourly Charge Discharge 31 - 15:30-16:00", address=129, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    1301: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_32", name="Hourly Charge Discharge 32 - 16:00-16:30", address=130, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1302: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_33", name="Hourly Charge Discharge 33 - 16:30-17:00", address=130, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1303: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_34", name="Hourly Charge Discharge 34 - 17:00-17:30", address=130, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1304: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_35", name="Hourly Charge Discharge 35 - 17:30-18:00", address=130, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1305: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_36", name="Hourly Charge Discharge 36 - 18:00-18:30", address=130, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1306: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_37", name="Hourly Charge Discharge 37 - 18:30-19:00", address=130, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1307: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_38", name="Hourly Charge Discharge 38 - 19:00-19:30", address=130, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1308: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_39", name="Hourly Charge Discharge 39 - 19:30-20:00", address=130, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
+    1311: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_40", name="Hourly Charge Discharge 40 - 20:00-20:30", address=131, bit_mask=0x03, options=["No action", "Charging", "Discharging"]),
+    1312: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_41", name="Hourly Charge Discharge 41 - 20:30-21:00", address=131, bit_mask=0x0C, options=["No action", "Charging", "Discharging"]),
+    1313: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_42", name="Hourly Charge Discharge 42 - 21:00-21:30", address=131, bit_mask=0x30, options=["No action", "Charging", "Discharging"]),
+    1314: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_43", name="Hourly Charge Discharge 43 - 21:30-22:00", address=131, bit_mask=0xC0, options=["No action", "Charging", "Discharging"]),
+    1315: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_44", name="Hourly Charge Discharge 44 - 22:00-22:30", address=131, bit_mask=0x300, options=["No action", "Charging", "Discharging"]),
+    1316: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_45", name="Hourly Charge Discharge 45 - 22:30-23:00", address=131, bit_mask=0xC00, options=["No action", "Charging", "Discharging"]),
+    1317: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_46", name="Hourly Charge Discharge 46 - 23:00-23:30", address=131, bit_mask=0x3000, options=["No action", "Charging", "Discharging"]),
+    1318: EG4ModbusSelectEntityDescription(key="setting_hourly_charge_discharge_time_47", name="Hourly Charge Discharge 47 - 23:30-0:00", address=131, bit_mask=0xC000, options=["No action", "Charging", "Discharging"]),
     144: EG4ModbusNumberEntityDescription(key="setting_voltage_float_charge", name="Float Charge Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=50, native_max_value=56),
     145: EG4ModbusSelectEntityDescription(key="setting_output_priority_config", name="Output Priority Config", icon="mdi:cogs", options=["Battery First", "PV First", "AC First"]),
-    146: EG4ModbusSelectEntityDescription(key="setting_line_mode", name="Line Mode", icon="mdi:cogs", options=["APL", "UPS", "GEN"]),
-    147: EG4ModbusNumberEntityDescription(key="setting_battery_capacity", name="Battery Capacity", native_unit_of_measurement="Ah", icon="mdi:cogs", native_min_value=0, native_max_value=10000),
+    146: EG4ModbusSelectEntityDescription(key="setting_line_mode", name="Grid Transfer Mode", icon="mdi:cogs", options=["APL (90-280V with 20ms transfer)", "UPS (170-280V with 10ms transfer)", "GEN (90-280V with 20ms transfer)"]),
+    147: EG4ModbusSensorEntityDescription(key="setting_battery_capacity", name="Battery Capacity", native_unit_of_measurement="Ah", icon="mdi:battery-charging", state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
     148: EG4ModbusNumberEntityDescription(key="setting_battery_nominal_voltage", name="Battery Nominal Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=40, native_max_value=59),
     149: EG4ModbusNumberEntityDescription(key="setting_voltage_equalization", name="Equalization Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=50, native_max_value=59),
     150: EG4ModbusNumberEntityDescription(key="setting_equalization_interval", name="Equalization Interval", native_unit_of_measurement=UnitOfTime.DAYS, icon="mdi:cogs", native_min_value=0, native_max_value=365),
@@ -333,77 +355,63 @@ HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNu
     169: EG4ModbusNumberEntityDescription(key="setting_voltage_ongrid_eod", name="Ongrid EOD Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=40, native_max_value=56),
     176: EG4ModbusNumberEntityDescription(key="setting_power_max_grid_input", name="Max Grid Input Power", native_unit_of_measurement=UnitOfPower.WATT, icon="mdi:cogs"),
     177: EG4ModbusNumberEntityDescription(key="setting_power_gen_rated", name="Gen Rated Power", native_unit_of_measurement=UnitOfPower.WATT, icon="mdi:cogs"),
-    179: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_grid_peak_shaving", name="Grid Peak Shaving", bit_mask=0x80, options=["Disabled", "Enabled"]),
-    179: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_gen_peak_shaving", name="Gen Peak Shaving", address=179, bit_mask=0x100, options=["Disabled", "Enabled"]),
+    17907: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_grid_peak_shaving", name="Grid Peak Shaving", address=179, bit_mask=0x80, options=["Disabled", "Enabled"]),
+    17908: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_gen_peak_shaving", name="Gen Peak Shaving", address=179, bit_mask=0x100, options=["Disabled", "Enabled"]),
+    17909: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_bat_chg_control", name="Battery Charge Control", address=179, bit_mask=0x200, options=["Disabled", "Enabled"]),
+    17910: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_bat_dischg_control", name="Battery Discharge Control", address=179, bit_mask=0x400, options=["Disabled", "Enabled"]),
+    17911: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_ac_coupling", name="AC Coupling", address=179, bit_mask=0x800, options=["Disabled", "Enabled"]),
+    17912: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_pv_arc_en", name="PV Arc Detection", address=179, bit_mask=0x1000, options=["Disabled", "Enabled"]),
+    17913: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_smart_load_en", name="Smart Load", address=179, bit_mask=0x2000, options=["Disabled", "Enabled"]),
+    17914: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_rsd_disable", name="RSD", address=179, bit_mask=0x4000, options=["Enabled", "Disabled"]),  ## REVERSING DOUBLE NEGATIVE
+    17915: EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_ongrid_always_on", name="Ongrid Always On", address=179, bit_mask=0x8000, options=["Disabled", "Enabled"]),
+
+
     194: EG4ModbusNumberEntityDescription(key="setting_voltage_gen_charge_start", name="Gen Charge Start Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=38.4, native_max_value=52),
     195: EG4ModbusNumberEntityDescription(key="setting_voltage_gen_charge_end", name="Gen Charge End Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=48, native_max_value=59),
     196: EG4ModbusNumberEntityDescription(key="setting_soc_gen_charge_start", name="Gen Charge Start SOC", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=90),
     197: EG4ModbusNumberEntityDescription(key="setting_soc_gen_charge_end", name="Gen Charge End SOC", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=20, native_max_value=100),
     198: EG4ModbusNumberEntityDescription(key="setting_current_max_gen_charge_battery", name="Max Gen Charge Battery Current", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, icon="mdi:cogs", native_min_value=0, native_max_value=60),
 
-    # --- New Registers from CSV ---
-
-    # Function En 2 (179)
-    "setting_ufunctionen2_bat_chg_control": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_bat_chg_control", name="Bat Charge Control", address=179, bit_mask=0x200, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_bat_dischg_control": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_bat_dischg_control", name="Bat Discharge Control", address=179, bit_mask=0x400, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_ac_coupling": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_ac_coupling", name="AC Coupling", address=179, bit_mask=0x800, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_pv_arc_en": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_pv_arc_en", name="PV Arc Enable", address=179, bit_mask=0x1000, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_smart_load_en": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_smart_load_en", name="Smart Load Enable", address=179, bit_mask=0x2000, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_rsd_disable": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_rsd_disable", name="RSD Disable", address=179, bit_mask=0x4000, options=["Disabled", "Enabled"]),
-    "setting_ufunctionen2_ongrid_always_on": EG4ModbusSelectEntityDescription(key="setting_ufunctionen2_ongrid_always_on", name="Ongrid Always On", address=179, bit_mask=0x8000, options=["Disabled", "Enabled"]),
-
-    # Single Registers 199+
     199: EG4ModbusNumberEntityDescription(key="setting_over_temp_derate_point", name="Over Temp Derate Point", native_unit_of_measurement=UnitOfTemperature.CELSIUS, scale=0.1, native_min_value=60, native_max_value=90, icon="mdi:cogs"),
     201: EG4ModbusNumberEntityDescription(key="setting_chg_first_end_volt", name="Charge Priority Voltage Limit", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
     202: EG4ModbusNumberEntityDescription(key="setting_force_dischg_end_volt", name="Forced Discharge Voltage Limit", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=40, native_max_value=56, icon="mdi:cogs"),
-    203: EG4ModbusSelectEntityDescription(key="setting_grid_regulation", name="Grid Regulation", options=["No Action", "Charging", "Discharging"], icon="mdi:cogs"),
+    # 203: EG4ModbusSelectEntityDescription(key="setting_grid_regulation", name="Grid Regulation", options=["1", "2", "3"], icon="mdi:cogs"), ## OPTIONS UNKNOWN
     204: EG4ModbusNumberEntityDescription(key="setting_lead_capacity", name="Lead Capacity", native_unit_of_measurement="Ah", native_min_value=50, native_max_value=850, icon="mdi:cogs"),
-    205: EG4ModbusSelectEntityDescription(key="setting_grid_type", name="Grid Type", options=["No Action", "Charging", "Discharging", "Option3", "Option4"], icon="mdi:cogs"), # Options assumed from 0-4
-    206: EG4ModbusNumberEntityDescription(key="setting_grid_peak_shaving_power", name="Grid Peak Shaving Power", native_unit_of_measurement=UnitOfPower.KILO_WATT, scale=0.1, native_min_value=0, native_max_value=25.5, icon="mdi:cogs"),
-    207: EG4ModbusNumberEntityDescription(key="setting_grid_peak_shaving_soc", name="Grid Peak Shaving SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
-    208: EG4ModbusNumberEntityDescription(key="setting_grid_peak_shaving_volt", name="Grid Peak Shaving Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
-    
-    # 209-212 Split bytes
-    "setting_peak_shaving_start_hour": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_start_hour", name="Peak Shaving Start Hour", address=209, bit_mask=0xFF, native_min_value=0, native_max_value=23, icon="mdi:clock"),
-    "setting_peak_shaving_start_minute": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_start_minute", name="Peak Shaving Start Minute", address=209, bit_mask=0xFF00, native_min_value=0, native_max_value=59, icon="mdi:clock"),
-    "setting_peak_shaving_end_hour": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_end_hour", name="Peak Shaving End Hour", address=210, bit_mask=0xFF, native_min_value=0, native_max_value=23, icon="mdi:clock"),
-    "setting_peak_shaving_end_minute": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_end_minute", name="Peak Shaving End Minute", address=210, bit_mask=0xFF00, native_min_value=0, native_max_value=59, icon="mdi:clock"),
-    "setting_peak_shaving_start_hour1": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_start_hour1", name="Peak Shaving Start Hour 1", address=211, bit_mask=0xFF, native_min_value=0, native_max_value=23, icon="mdi:clock"),
-    "setting_peak_shaving_start_minute1": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_start_minute1", name="Peak Shaving Start Minute 1", address=211, bit_mask=0xFF00, native_min_value=0, native_max_value=59, icon="mdi:clock"),
-    "setting_peak_shaving_end_hour1": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_end_hour1", name="Peak Shaving End Hour 1", address=212, bit_mask=0xFF, native_min_value=0, native_max_value=23, icon="mdi:clock"),
-    "setting_peak_shaving_end_minute1": EG4ModbusNumberEntityDescription(key="setting_peak_shaving_end_minute1", name="Peak Shaving End Minute 1", address=212, bit_mask=0xFF00, native_min_value=0, native_max_value=59, icon="mdi:clock"),
-    
+    205: EG4ModbusSelectEntityDescription(key="setting_grid_type", name="Grid Type", options=["Split 240V", "Split 208V", "Single 240V", "Single 230V", "Split 200V"], icon="mdi:cogs"),
+    206: EG4ModbusNumberEntityDescription(key="setting_peak_shaving_power", name="Peak Shaving Power", native_unit_of_measurement=UnitOfPower.KILO_WATT, scale=0.1, native_min_value=0, native_max_value=25.5, icon="mdi:cogs"),
+    207: EG4ModbusNumberEntityDescription(key="setting_peak_shaving_a_soc", name="Peak Shaving A SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
+    208: EG4ModbusNumberEntityDescription(key="setting_peak_shaving_a_volt", name="Peak Shaving A Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
+    209: EG4ModbusTimeEntityDescription(key="setting_peak_shaving_a_start", name="Peak Shaving A Start Time", address=209, icon="mdi:clock"),
+    210: EG4ModbusTimeEntityDescription(key="setting_peak_shaving_a_end", name="Peak Shaving A End Time", address=210, icon="mdi:clock"),
+    211: EG4ModbusTimeEntityDescription(key="setting_peak_shaving_b_start", name="Peak Shaving B Start Time", address=211, icon="mdi:clock"),
+    212: EG4ModbusTimeEntityDescription(key="setting_peak_shaving_b_end", name="Peak Shaving B End Time", address=212, icon="mdi:clock"),
     213: EG4ModbusNumberEntityDescription(key="setting_smart_load_on_volt", name="Smart Load On Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
     214: EG4ModbusNumberEntityDescription(key="setting_smart_load_off_volt", name="Smart Load Off Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=40, native_max_value=52, icon="mdi:cogs"),
     215: EG4ModbusNumberEntityDescription(key="setting_smart_load_on_soc", name="Smart Load On SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
     216: EG4ModbusNumberEntityDescription(key="setting_smart_load_off_soc", name="Smart Load Off SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
     217: EG4ModbusNumberEntityDescription(key="setting_start_pv_power", name="Start PV Power", native_unit_of_measurement=UnitOfPower.KILO_WATT, scale=0.1, native_min_value=0, native_max_value=12, icon="mdi:cogs"),
-    218: EG4ModbusNumberEntityDescription(key="setting_grid_peak_shaving_soc1", name="Grid Peak Shaving SOC 1", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
-    219: EG4ModbusNumberEntityDescription(key="setting_grid_peak_shaving_volt1", name="Grid Peak Shaving Voltage 1", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
+    218: EG4ModbusNumberEntityDescription(key="setting_peak_shaving_b_soc", name="Peak Shaving B SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
+    219: EG4ModbusNumberEntityDescription(key="setting_peak_shaving_b_volt", name="Peak Shaving B Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=48, native_max_value=59, icon="mdi:cogs"),
     220: EG4ModbusNumberEntityDescription(key="setting_ac_couple_start_soc", name="AC Couple Start SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=80, icon="mdi:cogs"),
     221: EG4ModbusNumberEntityDescription(key="setting_ac_couple_end_soc", name="AC Couple End SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=0, native_max_value=100, icon="mdi:cogs"),
     222: EG4ModbusNumberEntityDescription(key="setting_ac_couple_start_volt", name="AC Couple Start Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=40, native_max_value=52, icon="mdi:cogs"),
     223: EG4ModbusNumberEntityDescription(key="setting_ac_couple_end_volt", name="AC Couple End Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, scale=0.1, native_min_value=40, native_max_value=56, icon="mdi:cogs"),
-    
-    # 224 Info
-    "info_lcd_version": EG4ModbusSensorEntityDescription(key="info_lcd_version", name="LCD Version", address=224, bit_mask=0xFF, icon="mdi:information"),
-    "info_lcd_screen_type": EG4ModbusSensorEntityDescription(key="info_lcd_screen_type", name="LCD Screen Type", address=224, bit_mask=0x300, icon="mdi:information"),
-    "info_lcd_model_code": EG4ModbusSensorEntityDescription(key="info_lcd_model_code", name="LCD Model Code", address=224, bit_mask=0xFC00, icon="mdi:information"), # 0xFC00 = bits 10-15
-    
-    # 226
-    "setting_func3_exct_en": EG4ModbusSelectEntityDescription(key="setting_func3_exct_en", name="Function 3 ExCt Enable", address=226, bit_mask=0x4, options=["Disabled", "Enabled"]),
-    "setting_func3_runwithoutgrid": EG4ModbusSelectEntityDescription(key="setting_func3_runwithoutgrid", name="Function 3 Run Without Grid", address=226, bit_mask=0x8, options=["Disabled", "Enabled"]),
-    "setting_func3_nperlyen": EG4ModbusSelectEntityDescription(key="setting_func3_nperlyen", name="Function 3 NPeRly Enable", address=226, bit_mask=0x10, options=["Disabled", "Enabled"]),
+    2241: EG4ModbusSensorEntityDescription(key="hardware_lcd_version", name="Hardware Display Version", address=224, bit_mask=0xFF, icon="mdi:information"),
+    2242: EG4ModbusSensorEntityDescription(key="hardware_lcd_screen_type", name="Hardware Display Type", address=224, bit_mask=0x300, icon="mdi:information"),
+    2243: EG4ModbusSensorEntityDescription(key="hardware_lcd_model_code", name="Hardware Display Model Code", address=224, bit_mask=0xFC00, icon="mdi:information"), # 0xFC00 = bits 10-15$6
+    2261: EG4ModbusSelectEntityDescription(key="setting_func3_exct_en", name="Function 3 ExCt Enable", address=226, bit_mask=0x4, options=["Disabled", "Enabled"]),
+    2262: EG4ModbusSelectEntityDescription(key="setting_func3_runwithoutgrid", name="Function 3 Run Without Grid", address=226, bit_mask=0x8, options=["Disabled", "Enabled"]),
+    2263: EG4ModbusSelectEntityDescription(key="setting_func3_nperlyen", name="Function 3 NPeRly Enable", address=226, bit_mask=0x10, options=["Disabled", "Enabled"]),
 }
 
 
 # --- Enums and Flags ---
 INVERTER_STATUS_CODES = {
-    0x00: "Standby", 0x01: "Fault", 0x02: "Programming", 0x04: "PV on-grid mode",
-    0x08: "PV Charge mode", 0x0C: "PV Charge+on-grid mode", 0x10: "Battery on-grid mode",
-    0x14: "PV+ Battery on-grid mode", 0x20: "AC Charge mode", 0x28: "PV+AC charge mode",
-    0x40: "Battery off-grid mode", 0x80: "PV off-grid mode", 0x88: "PV charge +off-grid mode",
-    0xC0: "PV+battery off-grid mode",
+    0x00: "Standby", 0x01: "Fault", 0x02: "Programming", 0x04: "ON GRID: PV",
+    0x08: "PV Charge", 0x0C: "ON GRID: PV Charge", 0x10: "ON GRID: Battery",
+    0x14: "ON GRID: PV + Battery", 0x20: "AC Charge", 0x28: "PV + AC Charge",
+    0x40: "OFF GRID: Battery", 0x80: "OFF GRID: PV", 0x88: "OFF GRID: PV Charge",
+    0xC0: "OFF GRID: PV + Battery",
 }
 
 AC_INPUT_TYPE_CODES = {
@@ -417,7 +425,7 @@ FAULT_CODES = {
     (1 << 11): "AC input inconsistent in paralleling system", (1 << 12): "UPS short", (1 << 13): "Reverse current on UPS output",
     (1 << 14): "BUS short", (1 << 15): "Grid phases inconsistent in 3phase paralleling system", (1 << 16): "Relay Check Fault",
     (1 << 17): "Internal communication fault 2", (1 << 18): "Internal communication fault 3", (1 << 19): "BUS Voltage high",
-    (1 << 20): "EPS connection fault", (1 << 21): "PV Voltage high", (1 << 22): "Over current protection",
+    (1 << 20): "Inverter connection fault", (1 << 21): "PV Voltage high", (1 << 22): "Over current protection",
     (1 << 23): "Neutral fault", (1 << 24): "PV short", (1 << 25): "Radiator temperature out of range",
     (1 << 26): "Internal Fault", (1 << 27): "Sample inconsistent between Main CPU and redundant CPU", (1 << 31): "Internal communication fault 4",
 }
@@ -430,6 +438,6 @@ WARNING_CODES = {
     (1 << 16): "Grid power outage", (1 << 17): "Grid voltage out of range", (1 << 18): "Grid frequency out of range",
     (1 << 20): "PV insulation low", (1 << 21): "Leakage current high", (1 << 22): "DCI high",
     (1 << 23): "PV short", (1 << 25): "Battery voltage high", (1 << 26): "Battery voltage low",
-    (1 << 27): "Battery open circuit", (1 << 28): "EPS overload", (1 << 29): "EPS voltage high",
+    (1 << 27): "Battery open circuit", (1 << 28): "Inverter overload", (1 << 29): "Inverter voltage high",
     (1 << 30): "Meter reverse connection", (1 << 31): "DCV high",
 }

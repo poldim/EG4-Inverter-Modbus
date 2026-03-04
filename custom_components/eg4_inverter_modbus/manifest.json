@@ -1,7 +1,9 @@
 {
   "domain": "eg4_inverter_modbus",
   "name": "EG4 Inverter Modbus",
-  "codeowners": ["@poldim"],
+  "codeowners": [
+    "@poldim"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/poldim/EG4-Inverter-Modbus",
@@ -11,5 +13,5 @@
     "pymodbus>=3.11.0",
     "packaging"
   ],
-  "version": "0.0.2"
+  "version": "0.0.4"
 }

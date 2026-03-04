@@ -102,6 +102,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         self._device_id = slave if slave else 1
         self._lock = threading.Lock()
         self.data: dict = {}
+        self._consecutive_rejects: dict[str, int] = {}
         
         self._pyversion = parse_version(pymodbus_version)
 
@@ -169,7 +170,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         _LOGGER.error("Client connection failed before write.")
                         return False
                         
-                    result = client.write_register(address=address, value=value, **self._kwargs)
+                    result = client.write_registers(address=address, values=[value], **self._kwargs)
                     
                     if result.isError():
                         _LOGGER.error(f"Error writing register {address} with value {value}: {result}")
@@ -214,11 +215,13 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     if not result.isError():
                         updated = True
                         decoder = CustomPayloadDecoder(result.registers)
-                        data["inverter_state"] = INVERTER_STATUS_CODES.get(decoder.decode_16bit_uint(), "Unknown")
+                        data["inverter_mode"] = INVERTER_STATUS_CODES.get(decoder.decode_16bit_uint(), "Unknown")
                         data["voltage_pv1"] = decoder.decode_16bit_uint() / 10.0
                         data["voltage_pv2"] = decoder.decode_16bit_uint() / 10.0
                         data["voltage_pv3"] = decoder.decode_16bit_uint() / 10.0
+                        
                         data["voltage_battery"] = decoder.decode_16bit_uint() / 10.0
+                            
                         soc_soh_register = decoder.decode_16bit_uint()
                         data["battery_soc"] = soc_soh_register & 0xFF
                         data["battery_soh"] = soc_soh_register >> 8
@@ -228,22 +231,25 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["power_pv3"] = decoder.decode_16bit_uint()
                         data["power_battery_charge"] = decoder.decode_16bit_uint()
                         data["power_battery_discharge"] = decoder.decode_16bit_uint()
-                        data["voltage_grid_l1l2"] = decoder.decode_16bit_uint() / 10.0
-                        data["voltage_grid_l2l3"] = decoder.decode_16bit_uint() / 10.0
-                        data["voltage_grid_l3l1"] = decoder.decode_16bit_uint() / 10.0
+                        def clean_ac_voltage(v: float) -> float | None:
+                            return v if v < 400.0 else None
+                            
+                        data["voltage_grid_l1l2"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
+                        data["voltage_grid_l2l3"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
+                        data["voltage_grid_l3l1"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
                         
                         fac_pinv_reg = decoder.decode_16bit_uint()
                         data["frequency_grid"] = (fac_pinv_reg) / 100.0
-                        data["power_inverter_on_grid_l1"] = decoder.decode_16bit_uint()
+                        data["power_inverter_output"] = decoder.decode_16bit_uint()
                         data["power_ac_charge"] = decoder.decode_16bit_uint()
-                        data["current_inverter_rms_l1"] = decoder.decode_16bit_uint() / 100.0
-                        data["power_factor_inverter_l1"] = decoder.decode_16bit_uint() / 1000.0
-                        data["voltage_eps_l1l2"] = decoder.decode_16bit_uint() / 10.0
-                        data["voltage_eps_l2l3"] = decoder.decode_16bit_uint() / 10.0
-                        data["voltage_eps_l3l1"] = decoder.decode_16bit_uint() / 10.0
-                        data["frequency_eps"] = decoder.decode_16bit_uint() / 100.0
-                        data["power_eps"] = decoder.decode_16bit_uint()
-                        data["power_apparent_eps"] = decoder.decode_16bit_uint()
+                        data["current_inverter_rms"] = decoder.decode_16bit_uint() / 100.0
+                        data["power_factor_inverter"] = decoder.decode_16bit_uint() / 1000.0
+                        data["voltage_inverter_l1l2"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
+                        data["voltage_inverter_l2l3"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
+                        data["voltage_inverter_l3l1"] = clean_ac_voltage(decoder.decode_16bit_uint() / 10.0)
+                        data["frequency_inverter"] = decoder.decode_16bit_uint() / 100.0
+                        data["power_inverter"] = decoder.decode_16bit_uint()
+                        data["power_apparent_inverter"] = decoder.decode_16bit_uint()
                         data["power_grid_export"] = decoder.decode_16bit_uint()
                         data["power_grid_import"] = decoder.decode_16bit_uint()
                         data["energy_daily_pv1"] = decoder.decode_16bit_uint() / 10.0
@@ -253,7 +259,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["energy_daily_ac_charge"] = decoder.decode_16bit_uint() / 10.0
                         data["energy_daily_battery_charge"] = decoder.decode_16bit_uint() / 10.0
                         data["energy_daily_battery_discharge"] = decoder.decode_16bit_uint() / 10.0
-                        data["energy_daily_eps"] = decoder.decode_16bit_uint() / 10.0
+                        data["energy_daily_inverter"] = decoder.decode_16bit_uint() / 10.0
                         data["energy_daily_grid_export"] = decoder.decode_16bit_uint() / 10.0
                         data["energy_daily_grid_import"] = decoder.decode_16bit_uint() / 10.0
                         data["voltage_bus_1"] = decoder.decode_16bit_uint() / 10.0
@@ -273,7 +279,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["energy_cumulative_ac_charge"] = decoder.decode_32bit_uint() / 10.0
                         data["energy_cumulative_battery_charge"] = decoder.decode_32bit_uint() / 10.0
                         data["energy_cumulative_battery_discharge"] = decoder.decode_32bit_uint() / 10.0
-                        data["energy_cumulative_eps"] = decoder.decode_32bit_uint() / 10.0
+                        data["energy_cumulative_inverter"] = decoder.decode_32bit_uint() / 10.0
                         data["energy_cumulative_grid_export"] = decoder.decode_32bit_uint() / 10.0
                         data["energy_cumulative_grid_import"] = decoder.decode_32bit_uint() / 10.0
                         
@@ -291,6 +297,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         time_running_total_seconds = decoder.decode_32bit_uint()
                         current_time = datetime.now(timezone.utc)
                         data["inverter_on_time"] = (current_time - timedelta(seconds=time_running_total_seconds))
+                        data["inverter_uptime_days"] = round(time_running_total_seconds / 86400, 1)
                         
                         auto_test_reg = decoder.decode_16bit_uint()
                         data["auto_test_status"] = (auto_test_reg >> 4) & 0x0F
@@ -337,11 +344,14 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["bms_fw_update_state"] = decoder.decode_16bit_uint()
                         data["bms_cycle_count"] = decoder.decode_16bit_uint()
                         data["voltage_battery_sample_inverter"] = decoder.decode_16bit_uint() / 10.0
-                        data["temperature_t1"] = decoder.decode_16bit_int() / 10.0
-                        data["temperature_t2"] = decoder.decode_16bit_int() / 10.0
-                        data["temperature_t3"] = decoder.decode_16bit_int() / 10.0
-                        data["temperature_t4"] = decoder.decode_16bit_int() / 10.0
-                        data["temperature_t5"] = decoder.decode_16bit_int() / 10.0
+                        def get_probe_temp(val: float) -> float | None:
+                            return val if val != 0.0 else None
+
+                        data["temperature_t1"] = get_probe_temp(decoder.decode_16bit_int() / 10.0)
+                        data["temperature_t2"] = get_probe_temp(decoder.decode_16bit_int() / 10.0)
+                        data["temperature_t3"] = get_probe_temp(decoder.decode_16bit_int() / 10.0)
+                        data["temperature_t4"] = get_probe_temp(decoder.decode_16bit_int() / 10.0)
+                        data["temperature_t5"] = get_probe_temp(decoder.decode_16bit_int() / 10.0)
                         parallel_reg = decoder.decode_16bit_uint()
                         data["parallel_master_slave"] = parallel_reg & 0x03
                         data["parallel_phase"] = (parallel_reg >> 2) & 0x03
@@ -363,16 +373,16 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["power_generator"] = decoder.decode_16bit_uint()
                         data["energy_daily_generator"] = decoder.decode_16bit_uint() / 10.0
                         data["energy_cumulative_generator"] = decoder.decode_32bit_uint() / 10.0
-                        data["voltage_eps_l1n"] = decoder.decode_16bit_uint() / 10.0
-                        data["voltage_eps_l2n"] = decoder.decode_16bit_uint() / 10.0
-                        data["power_eps_l1n"] = decoder.decode_16bit_uint()
-                        data["power_eps_l2n"] = decoder.decode_16bit_uint()
-                        data["power_apparent_eps_l1n"] = decoder.decode_16bit_uint()
-                        data["power_apparent_eps_l2n"] = decoder.decode_16bit_uint()
-                        data["energy_daily_eps_l1n"] = decoder.decode_16bit_uint() / 10.0
-                        data["energy_daily_eps_l2n"] = decoder.decode_16bit_uint() / 10.0
-                        data["energy_cumulative_eps_l1n"] = decoder.decode_32bit_uint() / 10.0
-                        data["energy_cumulative_eps_l2n"] = decoder.decode_32bit_uint() / 10.0
+                        data["voltage_inverter_l1n"] = decoder.decode_16bit_uint() / 10.0
+                        data["voltage_inverter_l2n"] = decoder.decode_16bit_uint() / 10.0
+                        data["power_inverter_l1n"] = decoder.decode_16bit_uint()
+                        data["power_inverter_l2n"] = decoder.decode_16bit_uint()
+                        data["power_apparent_inverter_l1n"] = decoder.decode_16bit_uint()
+                        data["power_apparent_inverter_l2n"] = decoder.decode_16bit_uint()
+                        data["energy_daily_inverter_l1n"] = decoder.decode_16bit_uint() / 10.0
+                        data["energy_daily_inverter_l2n"] = decoder.decode_16bit_uint() / 10.0
+                        data["energy_cumulative_inverter_l1n"] = decoder.decode_32bit_uint() / 10.0
+                        data["energy_cumulative_inverter_l2n"] = decoder.decode_32bit_uint() / 10.0
                         decoder.skip_registers(1)
                         data["afci_current_ch1"] = decoder.decode_16bit_uint() / 10.0
                         data["afci_current_ch2"] = decoder.decode_16bit_uint() / 10.0
@@ -437,9 +447,9 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         updated = True
                         decoder = CustomPayloadDecoder(result.registers)
                         info_ver_reg9 = decoder.decode_16bit_uint()
-                        data["info_com_version"] = info_ver_reg9 >> 8
+                        data["hardware_com_version"] = info_ver_reg9 >> 8
                         info_ver_reg10 = decoder.decode_16bit_uint()
-                        data["info_controller_version"] = info_ver_reg10 & 0xFF
+                        data["hardware_controller_version"] = info_ver_reg10 & 0xFF
                         decoder.skip_registers(1)
                         
                         time_reg12 = decoder.decode_16bit_uint()
@@ -453,10 +463,11 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         minute = time_reg14 & 0xFF
                         second = time_reg14 >> 8
                         try:
-                            inverter_time = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
-                            now = dt_util.utcnow()
+                            # Inverter time is local time, HA we use local time (naive)
+                            inverter_time = datetime(year, month, day, hour, minute, second)
+                            now = dt_util.now().replace(tzinfo=None)
                             time_difference = abs(now - inverter_time)
-                            data["inverter_time_accurate"] = time_difference <= timedelta(seconds=30)
+                            data["inverter_time_accurate"] = time_difference <= timedelta(seconds=100)
                         except ValueError:
                             _LOGGER.warning("Invalid date components received from inverter")
                             data["inverter_time_accurate"] = False
@@ -472,6 +483,30 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     else:
                         _LOGGER.warning("Modbus read error on holding registers 9-24")
 
+                    result = client.read_holding_registers(21, count=1, **self._kwargs)
+                    if not result.isError():
+                        updated = True
+                        decoder = CustomPayloadDecoder(result.registers)
+                        reg21 = decoder.decode_16bit_uint()
+                        data["setting_func_en_eps"] = (reg21 >> 0) & 1
+                        data["setting_func_en_ovf_load_derate"] = (reg21 >> 1) & 1
+                        data["setting_func_en_drms"] = (reg21 >> 2) & 1
+                        data["setting_func_en_lvrt"] = (reg21 >> 3) & 1
+                        data["setting_func_en_anti_island"] = (reg21 >> 4) & 1
+                        data["setting_func_en_neutral_detect"] = (reg21 >> 5) & 1
+                        data["setting_func_en_grid_on_power_ss"] = (reg21 >> 6) & 1
+                        data["setting_func_en_ac_charge"] = (reg21 >> 7) & 1
+                        data["setting_func_en_sw_seamlessly"] = (reg21 >> 8) & 1
+                        data["setting_func_en_set_to_standby"] = (reg21 >> 9) & 1
+                        data["setting_func_en_forced_dischg"] = (reg21 >> 10) & 1
+                        data["setting_func_en_forced_chg"] = (reg21 >> 11) & 1
+                        data["setting_func_en_iso"] = (reg21 >> 12) & 1
+                        data["setting_func_en_gfci"] = (reg21 >> 13) & 1
+                        data["setting_func_en_dci"] = (reg21 >> 14) & 1
+                        data["setting_func_en_feed_in_grid"] = (reg21 >> 15) & 1
+                    else:
+                        _LOGGER.warning("Modbus read error on holding register 21")
+
                     # --- Block 2: Registers 64-119 ---
                     result = client.read_holding_registers(64, count=56, **self._kwargs)
                     if not result.isError():
@@ -482,8 +517,8 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_percent_ac_charge_power"] = decoder.decode_16bit_uint()
                         data["setting_limit_soc_ac_charge"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(22)
-                        data["setting_voltage_eps"] = decoder.decode_16bit_uint()
-                        data["setting_frequency_eps"] = decoder.decode_16bit_uint()
+                        data["setting_voltage_inverter"] = decoder.decode_16bit_uint()
+                        data["setting_frequency_inverter"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(7)
                         data["setting_voltage_charge_ref"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_voltage_discharge_cutoff"] = decoder.decode_16bit_uint() / 10.0
@@ -511,7 +546,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     result = client.read_holding_registers(125, count=1, **self._kwargs)
                     if not result.isError(): 
                         decoder = CustomPayloadDecoder(result.registers)
-                        data["setting_soc_low_limit_eps_discharge"] = decoder.decode_16bit_uint()
+                        data["setting_soc_low_limit_inverter_discharge"] = decoder.decode_16bit_uint()
                     
                     result = client.read_holding_registers(144, count=8, **self._kwargs)
                     if not result.isError():
@@ -632,42 +667,42 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_grid_regulation"] = decoder.decode_16bit_uint()
                         data["setting_lead_capacity"] = decoder.decode_16bit_uint()
                         data["setting_grid_type"] = decoder.decode_16bit_uint()
-                        data["setting_grid_peak_shaving_power"] = decoder.decode_16bit_uint() / 10.0
-                        data["setting_grid_peak_shaving_soc"] = decoder.decode_16bit_uint()
-                        data["setting_grid_peak_shaving_volt"] = decoder.decode_16bit_uint() / 10.0
+                        data["setting_peak_shaving_power"] = decoder.decode_16bit_uint() / 10.0
+                        data["setting_peak_shaving_a_soc"] = decoder.decode_16bit_uint()
+                        data["setting_peak_shaving_a_volt"] = decoder.decode_16bit_uint() / 10.0
                         
                         r209 = decoder.decode_16bit_uint()
-                        data["setting_peak_shaving_start_hour"] = r209 & 0xFF
-                        data["setting_peak_shaving_start_minute"] = r209 >> 8
+                        data["setting_peak_shaving_a_start_hour"] = r209 & 0xFF
+                        data["setting_peak_shaving_a_start_minute"] = r209 >> 8
                         
                         r210 = decoder.decode_16bit_uint()
-                        data["setting_peak_shaving_end_hour"] = r210 & 0xFF
-                        data["setting_peak_shaving_end_minute"] = r210 >> 8
+                        data["setting_peak_shaving_a_end_hour"] = r210 & 0xFF
+                        data["setting_peak_shaving_a_end_minute"] = r210 >> 8
                         
                         r211 = decoder.decode_16bit_uint()
-                        data["setting_peak_shaving_start_hour1"] = r211 & 0xFF
-                        data["setting_peak_shaving_start_minute1"] = r211 >> 8
+                        data["setting_peak_shaving_b_start_hour1"] = r211 & 0xFF
+                        data["setting_peak_shaving_b_start_minute1"] = r211 >> 8
                         
                         r212 = decoder.decode_16bit_uint()
-                        data["setting_peak_shaving_end_hour1"] = r212 & 0xFF
-                        data["setting_peak_shaving_end_minute1"] = r212 >> 8
+                        data["setting_peak_shaving_b_end_hour1"] = r212 & 0xFF
+                        data["setting_peak_shaving_b_end_minute1"] = r212 >> 8
                         
                         data["setting_smart_load_on_volt"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_smart_load_off_volt"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_smart_load_on_soc"] = decoder.decode_16bit_uint()
                         data["setting_smart_load_off_soc"] = decoder.decode_16bit_uint()
                         data["setting_start_pv_power"] = decoder.decode_16bit_uint() / 10.0
-                        data["setting_grid_peak_shaving_soc1"] = decoder.decode_16bit_uint()
-                        data["setting_grid_peak_shaving_volt1"] = decoder.decode_16bit_uint() / 10.0
+                        data["setting_peak_shaving_b_soc"] = decoder.decode_16bit_uint()
+                        data["setting_peak_shaving_b_volt"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_ac_couple_start_soc"] = decoder.decode_16bit_uint()
                         data["setting_ac_couple_end_soc"] = decoder.decode_16bit_uint()
                         data["setting_ac_couple_start_volt"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_ac_couple_end_volt"] = decoder.decode_16bit_uint() / 10.0
                         
                         r224 = decoder.decode_16bit_uint()
-                        data["info_lcd_version"] = r224 & 0xFF
-                        data["info_lcd_screen_type"] = (r224 >> 8) & 0x03
-                        data["info_lcd_model_code"] = (r224 >> 10) & 0x3F
+                        data["hardware_lcd_version"] = r224 & 0xFF
+                        data["hardware_lcd_screen_type"] = (r224 >> 8) & 0x03
+                        data["hardware_lcd_model_code"] = (r224 >> 10) & 0x3F
                         
                         decoder.skip_registers(1) # 225
                         
@@ -686,8 +721,53 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                 return self.data # Return last known data
 
 
-        # --- Final Calculations ---
+        # --- Generic Spike/Outlier Filter ---
         if updated:
+            for key, new_val in list(data.items()):
+                old_val = self.data.get(key)
+                
+                # Only apply to numeric values that have a previous baseline
+                if old_val is None or not isinstance(old_val, (int, float)) or not isinstance(new_val, (int, float)):
+                    self._consecutive_rejects[key] = 0
+                    continue
+                    
+                diff = abs(new_val - old_val)
+                is_spike = False
+                
+                # Check for physically impossible outliers or massive unnatural jumps
+                # (e.g. noise to 4000V, or dropping perfectly to 0 when it shouldn't)
+                if "voltage" in key:
+                    is_spike = diff > 40 or new_val > 600
+                elif "power" in key:
+                    is_spike = diff > 2000 or new_val > 5000
+                elif "current" in key:
+                    is_spike = diff > 10 or new_val > 100
+                elif "frequency" in key:
+                    is_spike = diff > 2 or new_val > 62 or (new_val < 40 and new_val != 0)
+                elif "temperature" in key:
+                    is_spike = diff > 5 or new_val > 100 or new_val < -50
+                elif "battery_soc" in key or "battery_soh" in key:
+                    # SOC/SOH change very slowly. An instant jump or drop of >5% is physically impossible
+                    is_spike = diff > 5 or new_val > 100
+                elif "energy" in key:
+                    # Energy should not jump instantly, but allowed to drop to 0 at midnight
+                    is_spike = diff > 10 or new_val != 0
+                    is_spike = True
+
+                if is_spike:
+                    rejects = self._consecutive_rejects.get(key, 0) + 1
+                    if rejects <= 2:
+                        self._consecutive_rejects[key] = rejects
+                        _LOGGER.debug(f"Spike detected for {key} (old: {old_val}, new: {new_val}). Rejecting {rejects}/2.")
+                        # Revert the data dict to the old valid value
+                        data[key] = old_val
+                    else:
+                        _LOGGER.debug(f"Spike persistently read for {key} (old: {old_val}, new: {new_val}). Accepting as valid change.")
+                        self._consecutive_rejects[key] = 0
+                else:
+                    self._consecutive_rejects[key] = 0
+
+            # --- Final Calculations ---
             data['power_pv_total'] = data.get('power_pv1', 0) + data.get('power_pv2', 0) + data.get('power_pv3', 0)
             
             pv_voltages = [v for v in [data.get('voltage_pv1', 0), data.get('voltage_pv2', 0), data.get('voltage_pv3', 0)] if v > 25]

@@ -31,6 +31,7 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.NUMBER,
     Platform.SELECT,
+    Platform.TIME,
 ]
 
 
@@ -99,7 +100,7 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
             else:
                 # Checkbox unchecked: use default from entity description
                 should_enable = default_enabled_map.get(unique_id, True)
-        elif domain == "number" or domain == "select":
+        elif domain in ["number", "select", "time"]:
             if enable_write_sensors:
                 # Checkbox checked: enable all write sensors
                 should_enable = True
