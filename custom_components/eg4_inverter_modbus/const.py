@@ -70,6 +70,7 @@ class EG4ModbusSelectEntityDescription(SelectEntityDescription):
     entity_registry_enabled_default: bool = False
     address: Optional[int] = None
     bit_mask: Optional[int] = None
+    option_dict: Optional[dict[int, str]] = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -249,16 +250,15 @@ HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNu
     10: EG4ModbusSensorEntityDescription(key="hardware_controller_version", name="Hardware Control Version", icon="mdi:information-outline", entity_category=EntityCategory.DIAGNOSTIC, entity_registry_enabled_default=False),
     16: EG4ModbusSelectEntityDescription(key="setting_language", name="Language", icon="mdi:cogs", options=["English", "German"]),
     20: EG4ModbusSelectEntityDescription(key="setting_pv_input_model", name="PV Input Model", icon="mdi:cogs", options=["No PV", "PV1", "PV2", "PV3", "PV1&2", "PV1&3", "PV2&3", "PV1&2&3"]),
-    2101: EG4ModbusSelectEntityDescription(key="setting_func_en_eps", name="Enable EPS", address=21, bit_mask=0x0001, options=["Disabled", "Enabled"]),
-    2102: EG4ModbusSelectEntityDescription(key="setting_func_en_ovf_load_derate", name="Enable OVF Load Derate", address=21, bit_mask=0x0002, options=["Disabled", "Enabled"]),
-    2103: EG4ModbusSelectEntityDescription(key="setting_func_en_drms", name="Enable DRMS", address=21, bit_mask=0x0004, options=["Disabled", "Enabled"]),
-    2104: EG4ModbusSelectEntityDescription(key="setting_func_en_lvrt", name="Enable LVRT", address=21, bit_mask=0x0008, options=["Disabled", "Enabled"]),
+    2101: EG4ModbusSelectEntityDescription(key="setting_func_en_eps", name="Enable EPS / Off Grid Mode", address=21, bit_mask=0x0001, options=["Disabled", "Enabled"]),
+    2102: EG4ModbusSelectEntityDescription(key="setting_func_en_ovf_load_derate", name="Enable Over Frequency Load Reduction", address=21, bit_mask=0x0002, options=["Disabled", "Enabled"]),
+    2104: EG4ModbusSelectEntityDescription(key="setting_func_en_lvrt", name="Enable Low Voltage Ride Through", address=21, bit_mask=0x0008, options=["Disabled", "Enabled"]),
     2105: EG4ModbusSelectEntityDescription(key="setting_func_en_anti_island", name="Enable Anti-islanding", address=21, bit_mask=0x0010, options=["Disabled", "Enabled"]),
     2106: EG4ModbusSelectEntityDescription(key="setting_func_en_neutral_detect", name="Enable Neutral Detect", address=21, bit_mask=0x0020, options=["Disabled", "Enabled"]),
     2107: EG4ModbusSelectEntityDescription(key="setting_func_en_grid_on_power_ss", name="Enable Grid On Power SS", address=21, bit_mask=0x0040, options=["Disabled", "Enabled"]),
-    2108: EG4ModbusSelectEntityDescription(key="setting_func_en_ac_charge", name="Enable AC Charge", address=21, bit_mask=0x0080, options=["Disabled", "Enabled"]),
+    2108: EG4ModbusSelectEntityDescription(key="setting_func_en_ac_charge", name="AC Charge Enable", address=21, bit_mask=0x0080, options=["Disabled", "Enabled"]),
     2109: EG4ModbusSelectEntityDescription(key="setting_func_en_sw_seamlessly", name="Enable Seamless Switching", address=21, bit_mask=0x0100, options=["Disabled", "Enabled"]),
-    2110: EG4ModbusSelectEntityDescription(key="setting_func_en_set_to_standby", name="Enable Set to Standby", address=21, bit_mask=0x0200, options=["Standby", "Power on"]),
+    2110: EG4ModbusSelectEntityDescription(key="setting_func_en_set_to_standby", name="Enable Standby Mode", address=21, bit_mask=0x0200, options=["Standby", "Normal"]),
     2111: EG4ModbusSelectEntityDescription(key="setting_func_en_forced_dischg", name="Enable Forced Discharge", address=21, bit_mask=0x0400, options=["Disabled", "Enabled"]),
     2112: EG4ModbusSelectEntityDescription(key="setting_func_en_forced_chg", name="Enable Force Charge", address=21, bit_mask=0x0800, options=["Disabled", "Enabled"]),
     2113: EG4ModbusSelectEntityDescription(key="setting_func_en_iso", name="Enable ISO", address=21, bit_mask=0x1000, options=["Disabled", "Enabled"]),
@@ -273,7 +273,7 @@ HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNu
     66: EG4ModbusNumberEntityDescription(key="setting_percent_ac_charge_power", name="AC Charge Percentage", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
     67: EG4ModbusNumberEntityDescription(key="setting_limit_soc_ac_charge", name="AC Charging SOC Limit", native_unit_of_measurement=PERCENTAGE, icon="mdi:cogs", native_min_value=0, native_max_value=100),
     90: EG4ModbusSelectEntityDescription(key="setting_voltage_inverter", name="Inverter Voltage", icon="mdi:cogs", options=["230", "240", "277", "208"]),
-    91: EG4ModbusSelectEntityDescription(key="setting_frequency_inverter", name="Inverter Frequency", icon="mdi:cogs", options=["50 Hz", "60 Hz"]),
+    91: EG4ModbusSelectEntityDescription(key="setting_frequency_inverter", name="Inverter Frequency", icon="mdi:cogs", options=["50 Hz", "60 Hz"], option_dict={50: "50 Hz", 60: "60 Hz"}),
     99: EG4ModbusNumberEntityDescription(key="setting_voltage_charge_ref", name="Charge Voltage Reference", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=50, native_max_value=59),
     100: EG4ModbusNumberEntityDescription(key="setting_voltage_discharge_cutoff", name="Discharge Cutoff Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, icon="mdi:cogs", scale=0.1, native_min_value=40, native_max_value=50),
     101: EG4ModbusNumberEntityDescription(key="setting_current_charge", name="Charge Current", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, icon="mdi:cogs", native_min_value=0, native_max_value=140),
@@ -402,6 +402,8 @@ HOLDING_REGISTERS: dict[int, Union[EG4ModbusSensorEntityDescription, EG4ModbusNu
     2261: EG4ModbusSelectEntityDescription(key="setting_func3_exct_en", name="Function 3 ExCt Enable", address=226, bit_mask=0x4, options=["Disabled", "Enabled"]),
     2262: EG4ModbusSelectEntityDescription(key="setting_func3_runwithoutgrid", name="Function 3 Run Without Grid", address=226, bit_mask=0x8, options=["Disabled", "Enabled"]),
     2263: EG4ModbusSelectEntityDescription(key="setting_func3_nperlyen", name="Function 3 NPeRly Enable", address=226, bit_mask=0x10, options=["Disabled", "Enabled"]),
+    227: EG4ModbusNumberEntityDescription(key="setting_bat_stop_charge_soc", name="Battery Stop Charge SOC", native_unit_of_measurement=PERCENTAGE, native_min_value=10, native_max_value=101, icon="mdi:cogs"),
+    228: EG4ModbusNumberEntityDescription(key="setting_bat_stop_charge_volt", name="Battery Stop Charge Voltage", native_unit_of_measurement=UnitOfElectricPotential.VOLT, entity_registry_enabled_default=False, scale=0.1, native_min_value=40, native_max_value=59.5, icon="mdi:cogs"),
 }
 
 

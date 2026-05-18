@@ -57,6 +57,7 @@ AC Input Type
 Battery Cycle Count
 Battery SOC
 Battery SOH
+Battery Stop Charge SOC
 BMS Current Battery
 BMS Temperature Max Cell
 BMS Temperature Min Cell

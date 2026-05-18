@@ -88,6 +88,14 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         val = self.coordinator.data.get(self.entity_description.key)
         if val is None:
             return None
+            
+        if self.entity_description.options_map is not None:
+            try:
+                int_val = int(val)
+                if int_val in self.entity_description.options_map:
+                    return self.entity_description.options_map[int_val]
+            except (ValueError, TypeError):
+                pass
         
         try:
             return self.entity_description.options[int(val)]
@@ -101,7 +109,13 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         try:
-            index = self.entity_description.options.index(option)
+            if self.entity_description.options_map is not None:
+                index = next((k for k, v in self.entity_description.options_map.items() if v == option), None)
+                if index is None:
+                    raise ValueError(f"'{option}' not found in options_map")
+            else:
+                index = self.entity_description.options.index(option)
+
             if self.entity_description.bit_mask is not None:
                 success = await self.hass.async_add_executor_job(
                     self.coordinator.write_masked_register, self._address, index, self.entity_description.bit_mask

@@ -170,7 +170,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         _LOGGER.error("Client connection failed before write.")
                         return False
                         
-                    result = client.write_registers(address=address, values=[value], **self._kwargs)
+                    result = client.write_register(address=address, value=value, **self._kwargs)
                     
                     if result.isError():
                         _LOGGER.error(f"Error writing register {address} with value {value}: {result}")
@@ -522,7 +522,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         decoder.skip_registers(7)
                         data["setting_voltage_charge_ref"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_voltage_discharge_cutoff"] = decoder.decode_16bit_uint() / 10.0
-                        data["setting_current_charge"] = decoder.decode_16bit_uint() / 10.0
+                        data["setting_current_charge"] = decoder.decode_16bit_uint()
                         data["setting_current_discharge"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_max_backflow_power"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(1)
@@ -655,8 +655,8 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_ufunctionen2_rsd_disable"] = (val >> 14) & 1
                         data["setting_ufunctionen2_ongrid_always_on"] = (val >> 15) & 1
 
-                    # --- Block 6: Registers 199-226 ---
-                    result = client.read_holding_registers(199, count=28, **self._kwargs)
+                    # --- Block 6: Registers 199-228 ---
+                    result = client.read_holding_registers(199, count=30, **self._kwargs)
                     if not result.isError():
                         updated = True
                         decoder = CustomPayloadDecoder(result.registers)
@@ -710,6 +710,9 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_func3_exct_en"] = (r226 >> 2) & 1
                         data["setting_func3_runwithoutgrid"] = (r226 >> 3) & 1
                         data["setting_func3_nperlyen"] = (r226 >> 4) & 1
+                        
+                        data["setting_bat_stop_charge_soc"] = decoder.decode_16bit_uint()
+                        data["setting_bat_stop_charge_volt"] = decoder.decode_16bit_uint() / 10.0
 
             except IndexError:
                 _LOGGER.warning("IndexError during Modbus decoding. Inverter response may be shorter than expected.")
