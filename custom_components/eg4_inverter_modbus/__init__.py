@@ -16,7 +16,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     DOMAIN, 
     DEFAULT_SCAN_INTERVAL, 
-    CONF_ENABLE_READ_SENSORS, 
+    CONF_ENABLE_ALL_READ_SENSORS, 
     CONF_ENABLE_WRITE_SENSORS,
     INPUT_REGISTERS,
     HOLDING_REGISTERS,
@@ -69,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update entity registry to enable/disable entities based on checkbox settings."""
     registry = er.async_get(hass)
-    enable_read_sensors = entry.options.get(CONF_ENABLE_READ_SENSORS, False)
+    enable_read_sensors = entry.options.get(CONF_ENABLE_ALL_READ_SENSORS, False)
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
     
     # Get all entities for this entry
