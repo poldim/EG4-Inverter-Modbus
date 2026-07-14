@@ -4,6 +4,7 @@ import inspect
 import logging
 import struct
 import threading
+import time
 from typing import Optional
 
 from homeassistant.core import CALLBACK_TYPE, callback, HomeAssistant
@@ -14,6 +15,65 @@ import pymodbus
 from pymodbus import __version__ as pymodbus_version
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ConnectionException
+
+class SafeModbusTcpClient(ModbusTcpClient):
+    """A wrapper around ModbusTcpClient that closes the socket on any error."""
+    def __enter__(self):
+        if not self.is_socket_open():
+            self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def read_input_registers(self, *args, **kwargs):
+        time.sleep(0.05)
+        try:
+            res = super().read_input_registers(*args, **kwargs)
+        except Exception as e:
+            self.close()
+            raise ConnectionException(f"Modbus input read exception: {e}") from e
+        if res is None or res.isError():
+            self.close()
+            raise ConnectionException(f"Modbus input read error: {res}")
+        return res
+
+    def read_holding_registers(self, *args, **kwargs):
+        time.sleep(0.05)
+        try:
+            res = super().read_holding_registers(*args, **kwargs)
+        except Exception as e:
+            self.close()
+            raise ConnectionException(f"Modbus holding read exception: {e}") from e
+        if res is None or res.isError():
+            self.close()
+            raise ConnectionException(f"Modbus holding read error: {res}")
+        return res
+
+    def write_register(self, *args, **kwargs):
+        time.sleep(0.05)
+        try:
+            res = super().write_register(*args, **kwargs)
+        except Exception as e:
+            self.close()
+            raise ConnectionException(f"Modbus write exception: {e}") from e
+        if res is None or res.isError():
+            self.close()
+            raise ConnectionException(f"Modbus write error: {res}")
+        return res
+
+    def write_registers(self, *args, **kwargs):
+        time.sleep(0.05)
+        try:
+            res = super().write_registers(*args, **kwargs)
+        except Exception as e:
+            self.close()
+            raise ConnectionException(f"Modbus write exception: {e}") from e
+        if res is None or res.isError():
+            self.close()
+            raise ConnectionException(f"Modbus write error: {res}")
+        return res
+
 from pymodbus.pdu import ExceptionResponse
 from packaging.version import parse as parse_version
 
@@ -98,10 +158,11 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             name=name,
             update_interval=timedelta(seconds=scan_interval),
         )
-        self._client = ModbusTcpClient(host=host, port=port, timeout=5)
+        self._client = SafeModbusTcpClient(host=host, port=port, timeout=5)
         self._device_id = slave if slave else 1
         self._lock = threading.Lock()
         self.data: dict = {}
+        self.battery_count: int = 0
         self._consecutive_rejects: dict[str, int] = {}
         
         self._pyversion = parse_version(pymodbus_version)
@@ -109,7 +170,8 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         possible_kwarg_names = ("slave", "unit", "device_id")
 
         def _detect_kwarg(method_name: str) -> Optional[str]:
-            method = getattr(self._client, method_name, None)
+            # Inspect the base class ModbusTcpClient to bypass the SafeModbusTcpClient wrapper
+            method = getattr(ModbusTcpClient, method_name, None)
             if method is None:
                 return None
             try:
@@ -140,6 +202,42 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             detected_kwarg,
             self._device_id,
         )
+
+    def get_device_info(self, key: str, entity_category) -> dict:
+        """Return the device info for a given entity key and category."""
+        import re
+        from homeassistant.helpers.entity import EntityCategory
+        from .const import DOMAIN, ATTR_MANUFACTURER
+        
+        # 1. Check if battery
+        battery_match = re.match(r"^battery(\d+)_", key)
+        if battery_match:
+            battery_num = int(battery_match.group(1))
+            return {
+                "identifiers": {(DOMAIN, f"{self.name}_battery_{battery_num}")},
+                "name": f"{self.name} Battery {battery_num}",
+                "manufacturer": ATTR_MANUFACTURER,
+                "model": "EG4 Battery",
+                "via_device": (DOMAIN, self.name),
+            }
+        
+        # 2. Check if Settings/Diagnostic
+        if key.startswith("setting_") or entity_category in (EntityCategory.CONFIG, EntityCategory.DIAGNOSTIC):
+            return {
+                "identifiers": {(DOMAIN, f"{self.name}_settings")},
+                "name": f"{self.name} Inverter Settings",
+                "manufacturer": ATTR_MANUFACTURER,
+                "model": "EG4 Inverter Settings",
+                "via_device": (DOMAIN, self.name),
+            }
+            
+        # 3. Default to main inverter device
+        return {
+            "identifiers": {(DOMAIN, self.name)},
+            "name": self.name,
+            "manufacturer": ATTR_MANUFACTURER,
+            "model": "EG4 Inverter",
+        }
 
     @callback
     def async_remove_listener(self, update_callback: CALLBACK_TYPE) -> None:
@@ -172,6 +270,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         
                     result = client.write_register(address=address, value=value, **self._kwargs)
                     
+                    
                     if result.isError():
                         _LOGGER.error(f"Error writing register {address} with value {value}: {result}")
                         return False
@@ -182,6 +281,39 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             except Exception as e:
                 _LOGGER.error(f"An unexpected error occurred during Modbus write: {e}")
                 return False
+
+    def discover_batteries(self) -> None:
+        """Scan Modbus registers to detect the number of connected batteries."""
+        self.battery_count = 0
+        from .const import MAX_BATTERIES
+        with self._lock:
+            try:
+                with self._client as client:
+                    if not client.is_socket_open():
+                        client.connect()
+                    if not client.is_socket_open():
+                        _LOGGER.warning("Could not connect to inverter for battery discovery.")
+                        return
+
+                    for i in range(MAX_BATTERIES):
+                        address = 5000 + (30 * i)
+                        result = client.read_input_registers(address, count=30, **self._kwargs)
+                        if result.isError():
+                            break
+                        
+                        # Verify the valid marker at index 2 (offset 2) is present or capacity exists
+                        if len(result.registers) > 3 and result.registers[2] == 0xC002:
+                            self.battery_count += 1
+                        else:
+                            # Also allow if it doesn't have 0xC002 but has a valid capacity at index 3
+                            if len(result.registers) > 3 and result.registers[3] > 0 and result.registers[3] < 2000:
+                                self.battery_count += 1
+                            else:
+                                break
+                            
+                    _LOGGER.info(f"Discovered {self.battery_count} batteries.")
+            except Exception as e:
+                _LOGGER.error(f"Error during battery discovery: {e}")
 
     async def _async_update_data(self) -> dict:
         """Fetch data from inverter in a single executor job."""
@@ -210,6 +342,75 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     # Read Input Registers (Function Code 0x04)
                     # =================================================================================
                     
+                    # --- Battery Blocks ---
+                    for i in range(self.battery_count):
+                        address = 5000 + (30 * i)
+                        result = client.read_input_registers(address, count=30, **self._kwargs)
+                        if not result.isError():
+                            updated = True
+                            decoder = CustomPayloadDecoder(result.registers)
+                            prefix = f"battery{i+1:02d}"
+                            
+                            try:
+                                decoder.skip_registers(3) # Skip 0, 1, 2
+                                data[f"{prefix}_capacity_pack"] = decoder.decode_16bit_uint()
+                                data[f"{prefix}_capacity_system"] = decoder.decode_16bit_uint()
+                                data[f"{prefix}_current_max_charge"] = decoder.decode_16bit_uint() / 10.0
+                                data[f"{prefix}_current_max_discharge"] = decoder.decode_16bit_uint() / 10.0
+                                decoder.skip_registers(1) # Discharge Voltage Ref / Do Not Use
+                                data[f"{prefix}_voltage"] = decoder.decode_16bit_uint() / 100.0
+                                data[f"{prefix}_current"] = decoder.decode_16bit_int() / 10.0
+                                
+                                soh_soc = decoder.decode_16bit_uint()
+                                data[f"{prefix}_soh"] = soh_soc >> 8
+                                data[f"{prefix}_soc"] = soh_soc & 0xFF
+                                
+                                data[f"{prefix}_cycle_count"] = decoder.decode_16bit_uint()
+                                data[f"{prefix}_max_cell_temp"] = decoder.decode_16bit_uint() / 10.0
+                                data[f"{prefix}_min_cell_temp"] = decoder.decode_16bit_uint() / 10.0
+                                data[f"{prefix}_max_cell_voltage"] = decoder.decode_16bit_uint() / 1000.0
+                                data[f"{prefix}_min_cell_voltage"] = decoder.decode_16bit_uint() / 1000.0
+                                
+                                temp_cells_raw = decoder.decode_16bit_uint()
+                                data[f"{prefix}_cell_temp_min"] = f"Cell {temp_cells_raw >> 8}"
+                                data[f"{prefix}_cell_temp_max"] = f"Cell {temp_cells_raw & 0xFF}"
+                                
+                                voltage_cells_raw = decoder.decode_16bit_uint()
+                                data[f"{prefix}_cell_voltage_min"] = f"Cell {voltage_cells_raw >> 8}"
+                                data[f"{prefix}_cell_voltage_max"] = f"Cell {voltage_cells_raw & 0xFF}"
+                                
+                                firmware_raw = decoder.decode_16bit_uint()
+                                data[f"{prefix}_firmware"] = f"{firmware_raw >> 8}.{firmware_raw & 0xFF}"
+                                
+                                serial_chars = []
+                                for _ in range(7):
+                                    val = decoder.decode_16bit_uint()
+                                    c1 = val & 0xFF
+                                    c2 = val >> 8
+                                    if c1: serial_chars.append(chr(c1))
+                                    if c2: serial_chars.append(chr(c2))
+                                data[f"{prefix}_serial_id"] = "".join(serial_chars).rstrip('\x00')
+                                
+                                # Calculated values
+                                data[f"{prefix}_remaining_capacity"] = data[f"{prefix}_capacity_pack"] * (data[f"{prefix}_soc"] / 100.0)
+                                data[f"{prefix}_cell_voltage_delta"] = round(data[f"{prefix}_max_cell_voltage"] - data[f"{prefix}_min_cell_voltage"], 3)
+                                
+                                temp_delta_c = data[f"{prefix}_max_cell_temp"] - data[f"{prefix}_min_cell_temp"]
+                                if self.hass.config.units.temperature_unit == "°C":
+                                    data[f"{prefix}_cell_temp_delta"] = round(temp_delta_c, 1)
+                                else:
+                                    data[f"{prefix}_cell_temp_delta"] = round(temp_delta_c * 1.8, 1)
+                                    
+                                data[f"{prefix}_real_power"] = round(data[f"{prefix}_voltage"] * data[f"{prefix}_current"], 1)
+                                if data[f"{prefix}_capacity_pack"] > 0:
+                                    data[f"{prefix}_current_flow_rate"] = round((data[f"{prefix}_current"] / data[f"{prefix}_capacity_pack"]) * 100.0, 2)
+                                else:
+                                    data[f"{prefix}_current_flow_rate"] = 0.0
+                                
+                                decoder.skip_registers(4) # Skip remaining registers (5026-5029) to reach the end of 30 registers block
+                            except IndexError:
+                                _LOGGER.warning(f"IndexError decoding battery {i+1} block. Inverter response shorter than expected.")
+
                     # --- Block 1: Registers 0-39 ---
                     result = client.read_input_registers(0, count=40, **self._kwargs)
                     if not result.isError():
@@ -479,7 +680,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         decoder.skip_registers(1)
                         data["setting_voltage_pv_start"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_time_grid_connection_wait"] = decoder.decode_16bit_uint()
-                        data["setting_time_reconnection_wait"] = decoder.decode_16bit_uint()
+                        data["setting_time_grid_reconnection_wait"] = decoder.decode_16bit_uint()
                     else:
                         _LOGGER.warning("Modbus read error on holding registers 9-24")
 
@@ -531,7 +732,21 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_temp_high_limit_discharge"] = decoder.decode_16bit_int() / 10.0
                         data["setting_temp_low_limit_charge"] = decoder.decode_16bit_int() / 10.0
                         data["setting_temp_high_limit_charge"] = decoder.decode_16bit_int() / 10.0
-                        decoder.skip_registers(2)
+                        reg110 = decoder.decode_16bit_uint()
+                        data["setting_functionen1_ubpvgridoffen"] = (reg110 >> 0) & 1
+                        data["setting_functionen1_ubfastzeroexport"] = (reg110 >> 1) & 1
+                        data["setting_functionen1_ubmicrogriden"] = (reg110 >> 2) & 1
+                        data["setting_functionen1_ubbatshared"] = (reg110 >> 3) & 1
+                        data["setting_functionen1_ubchglasten"] = (reg110 >> 4) & 1
+                        data["setting_functionen1_ctsampleratio"] = (reg110 >> 5) & 3
+                        data["setting_functionen1_buzzeren"] = (reg110 >> 7) & 1
+                        data["setting_functionen1_pvctsampletype"] = (reg110 >> 8) & 3
+                        data["setting_functionen1_takeloadtogether"] = (reg110 >> 10) & 1
+                        data["setting_functionen1_ongridworkingmode"] = (reg110 >> 11) & 1
+                        data["setting_functionen1_pvctsampleratio"] = (reg110 >> 12) & 3
+                        data["setting_functionen1_greenmodeen"] = (reg110 >> 14) & 1
+                        data["setting_functionen1_ecomodeen"] = (reg110 >> 15) & 1
+                        decoder.skip_registers(1)
                         data["setting_system_type"] = decoder.decode_16bit_uint()
                         data["setting_composed_phase"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(2)
@@ -733,6 +948,11 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                 if old_val is None or not isinstance(old_val, (int, float)) or not isinstance(new_val, (int, float)):
                     self._consecutive_rejects[key] = 0
                     continue
+                
+                # Skip settings, raw packed cells/sensors indices, index helper fields, and serial numbers
+                if key.startswith("setting_") or "cells" in key or "idx" in key or "serial" in key:
+                    self._consecutive_rejects[key] = 0
+                    continue
                     
                 diff = abs(new_val - old_val)
                 is_spike = False
@@ -753,9 +973,10 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     # SOC/SOH change very slowly. An instant jump or drop of >5% is physically impossible
                     is_spike = diff > 5 or new_val > 100
                 elif "energy" in key:
-                    # Energy should not jump instantly, but allowed to drop to 0 at midnight
-                    is_spike = diff > 10 or new_val != 0
-                    is_spike = True
+                    # Energy should not jump instantly, but allowed to drop to 0 at midnight.
+                    # A drop to 0 will be treated as a spike and delayed by 3 polls (30 seconds),
+                    # which is an acceptable delay for the daily reset while effectively filtering out 0-glitches.
+                    is_spike = diff > 1.0
 
                 if is_spike:
                     rejects = self._consecutive_rejects.get(key, 0) + 1
@@ -785,6 +1006,8 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             data['energy_cumulative_pv'] = data.get('energy_cumulative_pv1', 0) + data.get('energy_cumulative_pv2', 0) + data.get('energy_cumulative_pv3', 0)
             
             data['power_grid_total'] = data.get('power_grid_import', 0) - data.get('power_grid_export', 0)
+            data['energy_daily_grid_net'] = data.get('energy_daily_grid_import', 0) - data.get('energy_daily_grid_export', 0)
+            data['energy_cumulative_grid_net'] = data.get('energy_cumulative_grid_import', 0) - data.get('energy_cumulative_grid_export', 0)
 
             self.data = data
             return self.data

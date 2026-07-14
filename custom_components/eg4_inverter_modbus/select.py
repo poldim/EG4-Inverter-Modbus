@@ -30,13 +30,6 @@ async def async_setup_entry(
     """Set up the EG4 select entities."""
     hub: EG4ModbusHub = hass.data[DOMAIN][entry.entry_id]
     
-    device_info = {
-        "identifiers": {(DOMAIN, hub.name)},
-        "name": hub.name,
-        "manufacturer": ATTR_MANUFACTURER,
-        "model": "EG4 Inverter",
-    }
-
     entities = []
     
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
@@ -53,7 +46,8 @@ async def async_setup_entry(
                 is_enabled = True
 
             # Pass the calculated state to the constructor
-            entity = EG4Select(hub, device_info, description, address, is_enabled)
+            dev_info = hub.get_device_info(description.key, description.entity_category)
+            entity = EG4Select(hub, dev_info, description, address, is_enabled)
             entities.append(entity)
 
     async_add_entities(entities)
@@ -88,13 +82,11 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         val = self.coordinator.data.get(self.entity_description.key)
         if val is None:
             return None
-            
-        if self.entity_description.options_map is not None:
+        
+        if self.entity_description.option_dict:
             try:
-                int_val = int(val)
-                if int_val in self.entity_description.options_map:
-                    return self.entity_description.options_map[int_val]
-            except (ValueError, TypeError):
+                return self.entity_description.option_dict[int(val)]
+            except (ValueError, KeyError):
                 pass
         
         try:
@@ -109,10 +101,8 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         try:
-            if self.entity_description.options_map is not None:
-                index = next((k for k, v in self.entity_description.options_map.items() if v == option), None)
-                if index is None:
-                    raise ValueError(f"'{option}' not found in options_map")
+            if self.entity_description.option_dict:
+                index = next(k for k, v in self.entity_description.option_dict.items() if v == option)
             else:
                 index = self.entity_description.options.index(option)
 
@@ -129,5 +119,5 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
                 self.coordinator.data[self.entity_description.key] = index
                 self.async_write_ha_state()
                 await self.coordinator.async_request_refresh()
-        except ValueError:
+        except (ValueError, StopIteration):
             _LOGGER.error(f"'{option}' is not a valid option for {self.name}")

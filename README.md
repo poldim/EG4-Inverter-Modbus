@@ -57,14 +57,13 @@ AC Input Type
 Battery Cycle Count
 Battery SOC
 Battery SOH
-Battery Stop Charge SOC
+Battery Voltage
 BMS Current Battery
 BMS Temperature Max Cell
 BMS Temperature Min Cell
 BMS Voltage Max Cell
 BMS Voltage Min Cell
 Current Inverter RMS
-Energy Cumulative PV
 Energy Daily AC Charge
 Energy Daily Battery Charge
 Energy Daily Battery Discharge
@@ -72,9 +71,11 @@ Energy Daily Grid Export
 Energy Daily Grid Import
 Energy Daily Inverter
 Energy Daily Inverter Output
+Energy Daily Load
 Energy Daily PV Total
 Energy Daily PV1
-Inverter State
+Inverter Mode
+Inverter ON time
 Power AC Charge
 Power Battery Charge
 Power Battery Discharge
@@ -83,18 +84,48 @@ Power Grid Export
 Power Grid Import
 Power Grid Total
 Power Inverter
+Power Inverter AC Coupled
 Power Inverter Output
+Power Load
 Power PV Total
 Power PV1
 Temperature Internal
-Voltage Battery
 Voltage Grid L1
 Voltage Inverter L1-L2
 Voltage PV Average
 Voltage PV1
 Fault Code
-Inverter ON time
 Warning Code
+```
+
+
+### Battery Sensors: Automatically created for each communicating battery
+
+```yaml
+Battery {n} Capacity
+Battery {n} Capacity of System
+Battery {n} Current Charge Max
+Battery {n} Current Discharge Max
+Battery {n} Pack Voltage
+Battery {n} Current
+Battery {n} SOC
+Battery {n} SOH
+Battery {n} Cycle Count
+Battery {n} Cell Temperature Max
+Battery {n} Cell Temperature Min
+Battery {n} Cell Voltage Max
+Battery {n} Cell Voltage Min
+Battery {n} Cell with Min Temperature
+Battery {n} Cell with Max Temperature
+Battery {n} Cell with Min Voltage
+Battery {n} Cell with Max Voltage
+Battery {n} Firmware Version
+Battery {n} Remaining Capacity
+Battery {n} Cell Voltage Delta
+Battery {n} Cell Temperature Delta
+Battery {n} Real Power
+Battery {n} Current Flow Rate
+Battery {n} Serial ID
 ```
 
 
@@ -123,6 +154,7 @@ Energy Cumulative Inverter
 Energy Cumulative Inverter L1-N
 Energy Cumulative Inverter L2-N
 Energy Cumulative Inverter Output
+Energy Cumulative PV Total
 Energy Cumulative PV1
 Energy Cumulative PV2
 Energy Cumulative PV3
@@ -187,6 +219,7 @@ Battery Low to Utility SOC
 Battery Low to Utility Voltage
 Battery Low Voltage
 Battery Nominal Voltage
+Battery Stop Charge SOC
 Charge Current
 Charge Power Percentage
 Charge Voltage Reference
@@ -229,7 +262,7 @@ The overall path is:
 ```yaml
 12KPV Inverter Modbus RJ45 Port --> Modbus to Ethernet Gateway --> POE Network Switch
 ```
-I use a Modbus to Ethernet gateway to my inverter ([link]([url](https://amzn.to/3KThRJn))).  This was initially connected in parallel with my dongle, and then after I confirmed it worked, I replaced the dongle.  Running them in parallel had no negative impact on my system.
+I use a Modbus to Ethernet gateway to my inverter ([link](https://amzn.to/3KThRJn)).  This was initially connected in parallel with my dongle, and then after I confirmed it worked, I replaced the dongle.  Running them in parallel had no negative impact on my system.
 
 ![Dashboard Screenshot](docs/12KPV%20Comms%20Wiring.png)
 
@@ -241,9 +274,9 @@ In the future, if you want to do any inverter update, you have two options:
 
 # License
 
-Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0)
+GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
 
-## Disclaimer
+# Disclaimer
 
 Unofficial integration not affiliated with EG4 Electronics. 
 

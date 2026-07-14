@@ -14,7 +14,7 @@ from .const import (
     HOLDING_REGISTERS,
     EG4ModbusSensorEntityDescription,
     ATTR_MANUFACTURER,
-    CONF_ENABLE_READ_SENSORS,
+    CONF_ENABLE_ALL_READ_SENSORS,
 )
 from .hub import EG4ModbusHub
 
@@ -29,16 +29,9 @@ async def async_setup_entry(
     """Set up the EG4 sensors."""
     hub: EG4ModbusHub = hass.data[DOMAIN][entry.entry_id]
     
-    device_info = {
-        "identifiers": {(DOMAIN, hub.name)},
-        "name": hub.name,
-        "manufacturer": ATTR_MANUFACTURER,
-        "model": "EG4 Inverter",
-    }
-
     entities = []
     
-    enable_read_sensors = entry.options.get(CONF_ENABLE_READ_SENSORS, False)
+    enable_read_sensors = entry.options.get(CONF_ENABLE_ALL_READ_SENSORS, entry.options.get("enable_read_sensors", False))
 
     # Create sensors from Input Registers
     for key, description in INPUT_REGISTERS.items():
@@ -51,7 +44,8 @@ async def async_setup_entry(
             is_enabled = description.entity_registry_enabled_default
             if enable_read_sensors:
                 is_enabled = True
-            entities.append(EG4Sensor(hub, device_info, description, is_enabled))
+            dev_info = hub.get_device_info(description.key, description.entity_category)
+            entities.append(EG4Sensor(hub, dev_info, description, is_enabled))
 
     # Create sensors from Holding Registers
     for key, description in HOLDING_REGISTERS.items():
@@ -69,7 +63,27 @@ async def async_setup_entry(
             is_enabled = description.entity_registry_enabled_default
             if enable_read_sensors:
                 is_enabled = True
-            entities.append(EG4Sensor(hub, device_info, description, is_enabled))
+            dev_info = hub.get_device_info(description.key, description.entity_category)
+            entities.append(EG4Sensor(hub, dev_info, description, is_enabled))
+
+    from dataclasses import replace
+    from .const import BATTERY_SENSOR_DEFINITIONS
+
+    # Create dynamic battery sensors
+    for i in range(hub.battery_count):
+        battery_num = i + 1
+        prefix = f"battery{battery_num:02d}"
+        
+        for base_key, base_desc in BATTERY_SENSOR_DEFINITIONS.items():
+            new_key = base_desc.key.format(prefix)
+            new_name = base_desc.name.format(battery_num)
+            desc = replace(base_desc, key=new_key, name=new_name)
+            
+            is_enabled = desc.entity_registry_enabled_default
+            if enable_read_sensors:
+                is_enabled = True
+            dev_info = hub.get_device_info(desc.key, desc.entity_category)
+            entities.append(EG4Sensor(hub, dev_info, desc, is_enabled))
 
     async_add_entities(entities)
 
@@ -100,3 +114,10 @@ class EG4Sensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
     def native_value(self):
         """Return the state of the sensor."""
         return self.coordinator.data.get(self.entity_description.key)
+
+    @property
+    def native_unit_of_measurement(self):
+        """Return the unit of measurement."""
+        if self.entity_description.key.endswith("_cell_temp_delta"):
+            return self.coordinator.hass.config.units.temperature_unit
+        return self.entity_description.native_unit_of_measurement

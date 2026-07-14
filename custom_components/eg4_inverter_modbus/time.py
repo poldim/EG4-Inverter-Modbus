@@ -30,13 +30,6 @@ async def async_setup_entry(
     """Set up the EG4 time entities."""
     hub: EG4ModbusHub = hass.data[DOMAIN][entry.entry_id]
     
-    device_info = {
-        "identifiers": {(DOMAIN, hub.name)},
-        "name": hub.name,
-        "manufacturer": ATTR_MANUFACTURER,
-        "model": "EG4 Inverter",
-    }
-
     entities = []
     
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
@@ -53,7 +46,8 @@ async def async_setup_entry(
                 is_enabled = True
             
             # Pass the calculated state to the constructor
-            entity = EG4Time(hub, device_info, description, address, is_enabled)
+            dev_info = hub.get_device_info(description.key, description.entity_category)
+            entity = EG4Time(hub, dev_info, description, address, is_enabled)
             entities.append(entity)
 
     async_add_entities(entities)

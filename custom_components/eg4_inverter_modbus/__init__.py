@@ -48,6 +48,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
 
     hub = EG4ModbusHub(hass, name, host, port, slave, scan_interval)
+    
+    # Run a blocking/executor modbus scan for batteries before forwarding entry setups
+    await hass.async_add_executor_job(hub.discover_batteries)
+    
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
 
     # Set up the options listener. This will reload the integration when options change.
@@ -84,6 +88,15 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
     for desc in HOLDING_REGISTERS.values():
         unique_id = f"{name}_{desc.key}"
         default_enabled_map[unique_id] = desc.entity_registry_enabled_default
+        
+    from .const import BATTERY_SENSOR_DEFINITIONS
+    hub = hass.data[DOMAIN].get(entry.entry_id)
+    if hub and hasattr(hub, 'battery_count'):
+        for i in range(hub.battery_count):
+            prefix = f"battery{i+1:02d}"
+            for desc in BATTERY_SENSOR_DEFINITIONS.values():
+                unique_id = f"{name}_{desc.key.format(prefix)}"
+                default_enabled_map[unique_id] = desc.entity_registry_enabled_default
     
     for entity_entry in entities:
         entity_id = entity_entry.entity_id

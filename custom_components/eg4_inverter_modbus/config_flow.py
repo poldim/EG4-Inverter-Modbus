@@ -20,7 +20,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
-    CONF_ENABLE_READ_SENSORS,
+    CONF_ENABLE_ALL_READ_SENSORS,
     CONF_ENABLE_WRITE_SENSORS,
 )
 
@@ -33,7 +33,7 @@ USER_DATA_SCHEMA = vol.Schema(
         vol.Required("slave", default=1): int,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
         vol.Optional(
-            CONF_ENABLE_READ_SENSORS,
+            CONF_ENABLE_ALL_READ_SENSORS,
             default=False,
         ): bool,
         vol.Optional(
@@ -144,10 +144,16 @@ class EG4ModbusOptionsFlowHandler(OptionsFlow):
                     ),
                 ): int,
                 vol.Optional(
-                    CONF_ENABLE_READ_SENSORS,
+                    CONF_ENABLE_ALL_READ_SENSORS,
                     default=options_data.get(
-                        CONF_ENABLE_READ_SENSORS,
-                        config_data.get(CONF_ENABLE_READ_SENSORS, False),
+                        CONF_ENABLE_ALL_READ_SENSORS,
+                        options_data.get(
+                            "enable_read_sensors",
+                            config_data.get(
+                                CONF_ENABLE_ALL_READ_SENSORS,
+                                config_data.get("enable_read_sensors", False)
+                            )
+                        )
                     ),
                 ): bool,
                 vol.Optional(
