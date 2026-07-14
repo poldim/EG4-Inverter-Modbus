@@ -241,7 +241,7 @@ In the future, if you want to do any inverter update, you have two options:
 
 # License
 
-Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0)
+GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
 
 ## Disclaimer
 
