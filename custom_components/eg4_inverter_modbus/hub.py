@@ -1,7 +1,9 @@
 """EG4 Modbus Hub"""
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import inspect
 import logging
+import queue
 import struct
 import threading
 import time
@@ -139,6 +141,15 @@ class CustomPayloadDecoder:
         self._pointer += count
 
 
+@dataclass
+class _WriteRequest:
+    """A pending write request queued for processing on the next poll cycle."""
+    address: int
+    value: int
+    done: threading.Event = field(default_factory=threading.Event)
+    result: bool = False
+
+
 class EG4ModbusHub(DataUpdateCoordinator[dict]):
     """Thread safe wrapper class for pymodbus."""
 
@@ -161,6 +172,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         self._client = SafeModbusTcpClient(host=host, port=port, timeout=5)
         self._device_id = slave if slave else 1
         self._lock = threading.Lock()
+        self._write_queue: queue.SimpleQueue[_WriteRequest] = queue.SimpleQueue()
         self.data: dict = {}
         self.battery_count: int = 0
         self._consecutive_rejects: dict[str, int] = {}
@@ -248,39 +260,39 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
 
     def close(self) -> None:
         """Disconnect client."""
+        # Signal any pending writes that they will not be processed
+        try:
+            while True:
+                req = self._write_queue.get_nowait()
+                req.result = False
+                req.done.set()
+        except queue.Empty:
+            pass
         with self._lock:
             if self._client.is_socket_open():
                 self._client.close()
 
     def write_register(self, address: int, value: int) -> bool:
         """Write a single holding register."""
+        value = value & 0xFFFF
         if self._kwargs is None:
             _LOGGER.error("Cannot write register: integration has not successfully polled yet. Please wait.")
             return False
 
-        with self._lock:
-            try:
-                with self._client as client:
-                    if not client.is_socket_open():
-                        client.connect() # Ensure connection
-                    
-                    if not client.is_socket_open():
-                        _LOGGER.error("Client connection failed before write.")
-                        return False
-                        
-                    result = client.write_register(address=address, value=value, **self._kwargs)
-                    
-                    
-                    if result.isError():
-                        _LOGGER.error(f"Error writing register {address} with value {value}: {result}")
-                        return False
-                    return True
-            except ConnectionException as ex:
-                _LOGGER.error(f"Connection failed during write: {ex}")
-                return False
-            except Exception as e:
-                _LOGGER.error(f"An unexpected error occurred during Modbus write: {e}")
-                return False
+        req = _WriteRequest(address=address, value=value)
+        self._write_queue.put(req)
+        _LOGGER.debug(f"Write queued for register {address} = {value}. Waiting for next poll cycle.")
+
+        # Block the executor thread until the poll loop processes this write.
+        # Timeout of 60 s guards against HA shutdown before the next poll.
+        completed = req.done.wait(timeout=60)
+        if not completed:
+            _LOGGER.error(f"Timed out waiting for write to register {address} to be processed.")
+            return False
+
+        if not req.result:
+            _LOGGER.error(f"Write to register {address} failed during poll cycle.")
+        return req.result
 
     def discover_batteries(self) -> None:
         """Scan Modbus registers to detect the number of connected batteries."""
@@ -337,6 +349,26 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     if not client.is_socket_open():
                         _LOGGER.error("Modbus connection failed")
                         return self.data # Return last known data on connection fail
+
+                    # =================================================================================
+                    # Drain Write Queue (process any pending writes BEFORE reading)
+                    # =================================================================================
+                    while True:
+                        try:
+                            req = self._write_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        try:
+                            _LOGGER.debug(f"Processing queued write: register {req.address} = {req.value}")
+                            res = client.write_register(address=req.address, value=req.value, **self._kwargs)
+                            req.result = not res.isError()
+                            if res.isError():
+                                _LOGGER.error(f"Queued write to register {req.address} failed: {res}")
+                        except Exception as e:
+                            req.result = False
+                            _LOGGER.error(f"Queued write to register {req.address} raised exception: {e}")
+                        finally:
+                            req.done.set()
 
                     # =================================================================================
                     # Read Input Registers (Function Code 0x04)
@@ -748,12 +780,12 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_functionen1_ecomodeen"] = (reg110 >> 15) & 1
                         decoder.skip_registers(1)
                         data["setting_system_type"] = decoder.decode_16bit_uint()
-                        data["setting_composed_phase"] = decoder.decode_16bit_uint()
+                        data["setting_composed_phase"] = decoder.decode_16bit_uint() & 0xFF
                         decoder.skip_registers(2)
                         data["setting_ptouser_start_discharge"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(1)
                         data["setting_voltage_start_derating"] = decoder.decode_16bit_uint() / 10.0
-                        data["setting_power_offset_wct"] = decoder.decode_16bit_int()
+                        data["setting_power_offset_wct"] = decoder.decode_16bit_int() / 10.0
                     else:
                         _LOGGER.warning("Modbus read error on holding registers 64-119")
 
@@ -1016,52 +1048,96 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         return self.data
 
 
-    def read_holding_registers(self, address: int, count: int = 1) -> Optional[list[int]]:
-        """Read holding registers directly."""
-        if self._kwargs is None:
-            _LOGGER.warning("Integration has not successfully polled yet. Read might fail.")
+    # Map of holding register address -> list of (data_key, bit_shift) tuples
+    # used to reconstruct the raw register value from cached data.
+    _REG_BIT_FIELDS: dict[int, list[tuple[str, int]]] = {
+        21: [
+            ("setting_func_en_eps", 0),
+            ("setting_func_en_ovf_load_derate", 1),
+            ("setting_func_en_drms", 2),
+            ("setting_func_en_lvrt", 3),
+            ("setting_func_en_anti_island", 4),
+            ("setting_func_en_neutral_detect", 5),
+            ("setting_func_en_grid_on_power_ss", 6),
+            ("setting_func_en_ac_charge", 7),
+            ("setting_func_en_sw_seamlessly", 8),
+            ("setting_func_en_set_to_standby", 9),
+            ("setting_func_en_forced_dischg", 10),
+            ("setting_func_en_forced_chg", 11),
+            ("setting_func_en_iso", 12),
+            ("setting_func_en_gfci", 13),
+            ("setting_func_en_dci", 14),
+            ("setting_func_en_feed_in_grid", 15),
+        ],
+        110: [
+            ("setting_functionen1_ubpvgridoffen", 0),
+            ("setting_functionen1_ubfastzeroexport", 1),
+            ("setting_functionen1_ubmicrogriden", 2),
+            ("setting_functionen1_ubbatshared", 3),
+            ("setting_functionen1_ubchglasten", 4),
+            ("setting_functionen1_ctsampleratio", 5),   # 2-bit field (bits 5-6)
+            ("setting_functionen1_buzzeren", 7),
+            ("setting_functionen1_pvctsampletype", 8),  # 2-bit field (bits 8-9)
+            ("setting_functionen1_takeloadtogether", 10),
+            ("setting_functionen1_ongridworkingmode", 11),
+            ("setting_functionen1_pvctsampleratio", 12), # 2-bit field (bits 12-13)
+            ("setting_functionen1_greenmodeen", 14),
+            ("setting_functionen1_ecomodeen", 15),
+        ],
+        179: [
+            ("setting_ufunctionen2_grid_peak_shaving", 7),
+            ("setting_ufunctionen2_gen_peak_shaving", 8),
+            ("setting_ufunctionen2_bat_chg_control", 9),
+            ("setting_ufunctionen2_bat_dischg_control", 10),
+            ("setting_ufunctionen2_ac_coupling", 11),
+            ("setting_ufunctionen2_pv_arc_en", 12),
+            ("setting_ufunctionen2_smart_load_en", 13),
+            ("setting_ufunctionen2_rsd_disable", 14),
+            ("setting_ufunctionen2_ongrid_always_on", 15),
+        ],
+    }
+
+    def _reconstruct_register(self, address: int) -> Optional[int]:
+        """Reconstruct the raw 16-bit register value from cached data bit fields."""
+        fields = self._REG_BIT_FIELDS.get(address)
+        if fields is None:
+            _LOGGER.warning(f"No cached bit-field map for register {address}. Cannot reconstruct.")
             return None
 
-        with self._lock:
-            try:
-                with self._client as client:
-                    if not client.is_socket_open():
-                        client.connect()
-                    
-                    if not client.is_socket_open():
-                         _LOGGER.error("Client connection failed before read.")
-                         return None
-                    
-                    result = client.read_holding_registers(address, count=count, **self._kwargs)
-                    
-                    if result.isError():
-                         _LOGGER.error(f"Error reading register {address}: {result}")
-                         return None
-                    return result.registers
-            except Exception as e:
-                _LOGGER.error(f"Error reading registers: {e}")
+        raw = 0
+        for key, shift in fields:
+            val = self.data.get(key)
+            if val is None:
+                _LOGGER.warning(f"Cached key '{key}' missing for register {address} reconstruction.")
                 return None
+            raw |= (int(val) << shift)
+        return raw
 
     def write_masked_register(self, address: int, value: int, mask: int) -> bool:
-        """Read-Modify-Write a masked register."""
-        current_regs = self.read_holding_registers(address, 1)
-        if not current_regs:
-            _LOGGER.error(f"Could not read register {address} for RMW operation")
+        """Read-Modify-Write a masked register using cached register data.
+
+        Reads the current register value from the last poll cache (no live
+        Modbus read required), applies the mask, then queues the write.
+        """
+        current_val = self._reconstruct_register(address)
+        if current_val is None:
+            _LOGGER.error(
+                f"Could not reconstruct register {address} from cache for RMW. "
+                "Ensure at least one poll has completed."
+            )
             return False
-        
-        current_val = current_regs[0]
-        
+
         shift = 0
         temp_mask = mask
         while (temp_mask & 1) == 0 and temp_mask > 0:
             temp_mask >>= 1
             shift += 1
-            
+
         shifted_val = (value << shift) & mask
         new_val = (current_val & ~mask) | shifted_val
-        
-        _LOGGER.debug(f"RMW Address {address}: Old={current_val}, Mask={mask}, Shift={shift}, NewVal={new_val}")
-        
+
+        _LOGGER.debug(f"RMW Address {address}: CachedOld={current_val:#06x}, Mask={mask:#06x}, Shift={shift}, NewVal={new_val:#06x}")
+
         return self.write_register(address, new_val)
 
     def translate_bitmask_to_messages(self, code: int, message_map: dict) -> str:
