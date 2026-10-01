@@ -76,6 +76,10 @@ class EG4Number(CoordinatorEntity[EG4ModbusHub], NumberEntity):
         self._attr_name = description.name
         self._attr_entity_enabled_default = enabled_default
         self._address = address
+        if description.native_step is not None:
+            self._attr_native_step = description.native_step
+        elif description.scale is not None and description.scale < 1:
+            self._attr_native_step = description.scale
 
     @property
     def native_value(self) -> float | None:
@@ -84,6 +88,20 @@ class EG4Number(CoordinatorEntity[EG4ModbusHub], NumberEntity):
         if val is None:
             return None
         return float(val)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return device state attributes."""
+        attrs: dict[str, Any] = {}
+        val = self.coordinator.data.get(self.entity_description.key)
+        if self.entity_description.key == "setting_ac_couple_end_soc" and val is not None:
+            try:
+                if int(val) == 255:
+                    attrs["status"] = "Disabled"
+                    attrs["is_disabled"] = True
+            except (ValueError, TypeError):
+                pass
+        return attrs
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""

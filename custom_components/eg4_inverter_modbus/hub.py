@@ -219,29 +219,43 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         """Return the device info for a given entity key and category."""
         import re
         from homeassistant.helpers.entity import EntityCategory
+        from homeassistant.helpers import device_registry as dr
         from .const import DOMAIN, ATTR_MANUFACTURER
+
+        via_device_id = None
+        if hasattr(self, "hass") and self.hass is not None:
+            try:
+                dev_reg = dr.async_get(self.hass)
+                if parent_dev := dev_reg.async_get_device(identifiers={(DOMAIN, self.name)}):
+                    via_device_id = parent_dev.id
+            except Exception:
+                pass
         
         # 1. Check if battery
         battery_match = re.match(r"^battery(\d+)_", key)
         if battery_match:
             battery_num = int(battery_match.group(1))
-            return {
+            info = {
                 "identifiers": {(DOMAIN, f"{self.name}_battery_{battery_num}")},
                 "name": f"{self.name} Battery {battery_num}",
                 "manufacturer": ATTR_MANUFACTURER,
                 "model": "EG4 Battery",
-                "via_device": (DOMAIN, self.name),
             }
+            if via_device_id:
+                info["via_device_id"] = via_device_id
+            return info
         
         # 2. Check if Settings/Diagnostic
         if key.startswith("setting_") or entity_category in (EntityCategory.CONFIG, EntityCategory.DIAGNOSTIC):
-            return {
+            info = {
                 "identifiers": {(DOMAIN, f"{self.name}_settings")},
                 "name": f"{self.name} Inverter Settings",
                 "manufacturer": ATTR_MANUFACTURER,
                 "model": "EG4 Inverter Settings",
-                "via_device": (DOMAIN, self.name),
             }
+            if via_device_id:
+                info["via_device_id"] = via_device_id
+            return info
             
         # 3. Default to main inverter device
         return {
@@ -281,7 +295,13 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
 
         req = _WriteRequest(address=address, value=value)
         self._write_queue.put(req)
-        _LOGGER.debug(f"Write queued for register {address} = {value}. Waiting for next poll cycle.")
+        _LOGGER.debug(f"Write queued for register {address} = {value}. Triggering immediate refresh.")
+
+        # Trigger immediate poll cycle on event loop to process the write queue right away
+        def _request_refresh() -> None:
+            self.hass.async_create_task(self.async_request_refresh())
+
+        self.hass.loop.call_soon_threadsafe(_request_refresh)
 
         # Block the executor thread until the poll loop processes this write.
         # Timeout of 60 s guards against HA shutdown before the next poll.
@@ -529,7 +549,16 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         
                         time_running_total_seconds = decoder.decode_32bit_uint()
                         current_time = datetime.now(timezone.utc)
-                        data["inverter_on_time"] = (current_time - timedelta(seconds=time_running_total_seconds))
+                        calculated_on_time = (current_time - timedelta(seconds=time_running_total_seconds)).replace(microsecond=0)
+                        prev_on_time = self.data.get("inverter_on_time")
+                        if (
+                            isinstance(prev_on_time, datetime)
+                            and prev_on_time.tzinfo is not None
+                            and abs((calculated_on_time - prev_on_time).total_seconds()) <= 60
+                        ):
+                            data["inverter_on_time"] = prev_on_time
+                        else:
+                            data["inverter_on_time"] = calculated_on_time
                         data["inverter_uptime_days"] = round(time_running_total_seconds / 86400, 1)
                         
                         auto_test_reg = decoder.decode_16bit_uint()
@@ -740,6 +769,15 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     else:
                         _LOGGER.warning("Modbus read error on holding register 21")
 
+                    # --- Register 59: Reactive Power Command Type ---
+                    result = client.read_holding_registers(59, count=1, **self._kwargs)
+                    if not result.isError():
+                        updated = True
+                        decoder = CustomPayloadDecoder(result.registers)
+                        data["setting_reactive_power_cmd_type"] = decoder.decode_16bit_uint()
+                    else:
+                        _LOGGER.warning("Modbus read error on holding register 59")
+
                     # --- Block 2: Registers 64-119 ---
                     result = client.read_holding_registers(64, count=56, **self._kwargs)
                     if not result.isError():
@@ -747,16 +785,22 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         decoder = CustomPayloadDecoder(result.registers)
                         data["setting_percent_charge_power"] = decoder.decode_16bit_uint()
                         data["setting_percent_discharge_power"] = decoder.decode_16bit_uint()
-                        data["setting_percent_ac_charge_power"] = decoder.decode_16bit_uint()
+                        val_66 = decoder.decode_16bit_uint()
+                        data["setting_ac_charge_rate"] = val_66 / 10.0
+                        data["setting_percent_ac_charge_power"] = val_66
                         data["setting_limit_soc_ac_charge"] = decoder.decode_16bit_uint()
-                        decoder.skip_registers(22)
+                        for slot in ("t1_start", "t1_end", "t2_start", "t2_end", "t3_start", "t3_end"):
+                            val = decoder.decode_16bit_uint()
+                            data[f"setting_ac_charge_{slot}_hour"] = val & 0xFF
+                            data[f"setting_ac_charge_{slot}_minute"] = (val >> 8) & 0xFF
+                        decoder.skip_registers(16)
                         data["setting_voltage_inverter"] = decoder.decode_16bit_uint()
                         data["setting_frequency_inverter"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(7)
                         data["setting_voltage_charge_ref"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_voltage_discharge_cutoff"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_current_charge"] = decoder.decode_16bit_uint()
-                        data["setting_current_discharge"] = decoder.decode_16bit_uint() / 10.0
+                        data["setting_current_discharge"] = decoder.decode_16bit_uint()
                         data["setting_max_backflow_power"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(1)
                         data["setting_eod_soc"] = decoder.decode_16bit_uint()
@@ -789,7 +833,20 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     else:
                         _LOGGER.warning("Modbus read error on holding registers 64-119")
 
-                    # --- Block 3: Registers 125, 144-151, 158-169, 176-177, 194-198 ---
+                    # --- Block 3: Registers 120, 125, 144-151, 158-169, 176-177, 194-198 ---
+                    result = client.read_holding_registers(120, count=1, **self._kwargs)
+                    if not result.isError():
+                        updated = True
+                        reg120 = result.registers[0]
+                        data["setting_half_hour_ac_chr_start_en"] = reg120 & 0x01
+                        data["setting_ac_charge_type"] = (reg120 >> 1) & 0x07
+                        data["setting_discharge_control_type"] = (reg120 >> 4) & 0x03
+                        data["setting_ongrid_eod_type"] = (reg120 >> 6) & 0x01
+                        data["setting_generator_charge_type"] = (reg120 >> 7) & 0x01
+                        data["setting_separate_zero_export_en"] = (reg120 >> 8) & 0x01
+                    else:
+                        _LOGGER.warning("Modbus read error on holding register 120")
+
                     result = client.read_holding_registers(125, count=1, **self._kwargs)
                     if not result.isError(): 
                         decoder = CustomPayloadDecoder(result.registers)
@@ -801,7 +858,9 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_voltage_float_charge"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_output_priority_config"] = decoder.decode_16bit_uint()
                         data["setting_line_mode"] = decoder.decode_16bit_uint()
-                        data["setting_battery_capacity"] = decoder.decode_16bit_uint()
+                        val_147 = decoder.decode_16bit_uint()
+                        data["setting_battery_capacity_unmatched_override"] = val_147
+                        data["setting_battery_capacity"] = val_147
                         data["setting_battery_nominal_voltage"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_voltage_equalization"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_equalization_interval"] = decoder.decode_16bit_uint()
@@ -839,53 +898,65 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_current_max_gen_charge_battery"] = decoder.decode_16bit_uint() / 10.0
 
 
-                    # --- Block 4: Registers 127-131 (Optimal Time) ---
-                    result = client.read_holding_registers(127, count=5, **self._kwargs)
+                    # --- Block 4: Registers 126-131 (Optimal Time) ---
+                    result = client.read_holding_registers(126, count=6, **self._kwargs)
                     if not result.isError():
                         updated = True
                         regs = result.registers
-                        # 127
-                        data["setting_hourly_charge_discharge_time_11"] = (regs[0] >> 6) & 3
-                        data["setting_hourly_charge_discharge_time_12"] = (regs[0] >> 8) & 3
-                        data["setting_hourly_charge_discharge_time_13"] = (regs[0] >> 10) & 3
-                        data["setting_hourly_charge_discharge_time_14"] = (regs[0] >> 12) & 3
-                        data["setting_hourly_charge_discharge_time_15"] = (regs[0] >> 14) & 3
-                        # 128
-                        data["setting_hourly_charge_discharge_time_16"] = (regs[1] >> 0) & 3
-                        data["setting_hourly_charge_discharge_time_17"] = (regs[1] >> 2) & 3
-                        data["setting_hourly_charge_discharge_time_18"] = (regs[1] >> 4) & 3
-                        data["setting_hourly_charge_discharge_time_19"] = (regs[1] >> 6) & 3
-                        data["setting_hourly_charge_discharge_time_20"] = (regs[1] >> 8) & 3
-                        data["setting_hourly_charge_discharge_time_21"] = (regs[1] >> 10) & 3
-                        data["setting_hourly_charge_discharge_time_22"] = (regs[1] >> 12) & 3
-                        data["setting_hourly_charge_discharge_time_23"] = (regs[1] >> 14) & 3
-                        # 129
-                        data["setting_hourly_charge_discharge_time_24"] = (regs[2] >> 0) & 3
-                        data["setting_hourly_charge_discharge_time_25"] = (regs[2] >> 2) & 3
-                        data["setting_hourly_charge_discharge_time_26"] = (regs[2] >> 4) & 3
-                        data["setting_hourly_charge_discharge_time_27"] = (regs[2] >> 6) & 3
-                        data["setting_hourly_charge_discharge_time_28"] = (regs[2] >> 8) & 3
-                        data["setting_hourly_charge_discharge_time_29"] = (regs[2] >> 10) & 3
-                        data["setting_hourly_charge_discharge_time_30"] = (regs[2] >> 12) & 3
-                        data["setting_hourly_charge_discharge_time_31"] = (regs[2] >> 14) & 3
-                        # 130
-                        data["setting_hourly_charge_discharge_time_32"] = (regs[3] >> 0) & 3
-                        data["setting_hourly_charge_discharge_time_33"] = (regs[3] >> 2) & 3
-                        data["setting_hourly_charge_discharge_time_34"] = (regs[3] >> 4) & 3
-                        data["setting_hourly_charge_discharge_time_35"] = (regs[3] >> 6) & 3
-                        data["setting_hourly_charge_discharge_time_36"] = (regs[3] >> 8) & 3
-                        data["setting_hourly_charge_discharge_time_37"] = (regs[3] >> 10) & 3
-                        data["setting_hourly_charge_discharge_time_38"] = (regs[3] >> 12) & 3
-                        data["setting_hourly_charge_discharge_time_39"] = (regs[3] >> 14) & 3
-                        # 131
-                        data["setting_hourly_charge_discharge_time_40"] = (regs[4] >> 0) & 3
-                        data["setting_hourly_charge_discharge_time_41"] = (regs[4] >> 2) & 3
-                        data["setting_hourly_charge_discharge_time_42"] = (regs[4] >> 4) & 3
-                        data["setting_hourly_charge_discharge_time_43"] = (regs[4] >> 6) & 3
-                        data["setting_hourly_charge_discharge_time_44"] = (regs[4] >> 8) & 3
-                        data["setting_hourly_charge_discharge_time_45"] = (regs[4] >> 10) & 3
-                        data["setting_hourly_charge_discharge_time_46"] = (regs[4] >> 12) & 3
-                        data["setting_hourly_charge_discharge_time_47"] = (regs[4] >> 14) & 3
+                        # 126 (Times 00-07)
+                        data["setting_hourly_charge_discharge_time_0"] = (regs[0] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_1"] = (regs[0] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_2"] = (regs[0] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_3"] = (regs[0] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_4"] = (regs[0] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_5"] = (regs[0] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_6"] = (regs[0] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_7"] = (regs[0] >> 14) & 3
+                        # 127 (Times 08-15)
+                        data["setting_hourly_charge_discharge_time_8"] = (regs[1] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_9"] = (regs[1] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_10"] = (regs[1] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_11"] = (regs[1] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_12"] = (regs[1] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_13"] = (regs[1] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_14"] = (regs[1] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_15"] = (regs[1] >> 14) & 3
+                        # 128 (Times 16-23)
+                        data["setting_hourly_charge_discharge_time_16"] = (regs[2] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_17"] = (regs[2] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_18"] = (regs[2] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_19"] = (regs[2] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_20"] = (regs[2] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_21"] = (regs[2] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_22"] = (regs[2] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_23"] = (regs[2] >> 14) & 3
+                        # 129 (Times 24-31)
+                        data["setting_hourly_charge_discharge_time_24"] = (regs[3] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_25"] = (regs[3] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_26"] = (regs[3] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_27"] = (regs[3] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_28"] = (regs[3] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_29"] = (regs[3] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_30"] = (regs[3] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_31"] = (regs[3] >> 14) & 3
+                        # 130 (Times 32-39)
+                        data["setting_hourly_charge_discharge_time_32"] = (regs[4] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_33"] = (regs[4] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_34"] = (regs[4] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_35"] = (regs[4] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_36"] = (regs[4] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_37"] = (regs[4] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_38"] = (regs[4] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_39"] = (regs[4] >> 14) & 3
+                        # 131 (Times 40-47)
+                        data["setting_hourly_charge_discharge_time_40"] = (regs[5] >> 0) & 3
+                        data["setting_hourly_charge_discharge_time_41"] = (regs[5] >> 2) & 3
+                        data["setting_hourly_charge_discharge_time_42"] = (regs[5] >> 4) & 3
+                        data["setting_hourly_charge_discharge_time_43"] = (regs[5] >> 6) & 3
+                        data["setting_hourly_charge_discharge_time_44"] = (regs[5] >> 8) & 3
+                        data["setting_hourly_charge_discharge_time_45"] = (regs[5] >> 10) & 3
+                        data["setting_hourly_charge_discharge_time_46"] = (regs[5] >> 12) & 3
+                        data["setting_hourly_charge_discharge_time_47"] = (regs[5] >> 14) & 3
 
                     # --- Block 5: Register 179 (Function En 2) ---
                     result = client.read_holding_registers(179, count=1, **self._kwargs)
@@ -960,6 +1031,14 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         
                         data["setting_bat_stop_charge_soc"] = decoder.decode_16bit_uint()
                         data["setting_bat_stop_charge_volt"] = decoder.decode_16bit_uint() / 10.0
+
+                    # --- Block 7: Register 233 ---
+                    result = client.read_holding_registers(233, count=1, **self._kwargs)
+                    if not result.isError():
+                        updated = True
+                        data["setting_ac_charge_sporadic_charge"] = result.registers[0] & 0x01
+                    else:
+                        _LOGGER.warning("Modbus read error on holding register 233")
 
             except IndexError:
                 _LOGGER.warning("IndexError during Modbus decoding. Inverter response may be shorter than expected.")
@@ -1084,6 +1163,74 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             ("setting_functionen1_greenmodeen", 14),
             ("setting_functionen1_ecomodeen", 15),
         ],
+        120: [
+            ("setting_half_hour_ac_chr_start_en", 0),
+            ("setting_ac_charge_type", 1),
+            ("setting_discharge_control_type", 4),
+            ("setting_ongrid_eod_type", 6),
+            ("setting_generator_charge_type", 7),
+            ("setting_separate_zero_export_en", 8),
+        ],
+        126: [
+            ("setting_hourly_charge_discharge_time_0", 0),
+            ("setting_hourly_charge_discharge_time_1", 2),
+            ("setting_hourly_charge_discharge_time_2", 4),
+            ("setting_hourly_charge_discharge_time_3", 6),
+            ("setting_hourly_charge_discharge_time_4", 8),
+            ("setting_hourly_charge_discharge_time_5", 10),
+            ("setting_hourly_charge_discharge_time_6", 12),
+            ("setting_hourly_charge_discharge_time_7", 14),
+        ],
+        127: [
+            ("setting_hourly_charge_discharge_time_8", 0),
+            ("setting_hourly_charge_discharge_time_9", 2),
+            ("setting_hourly_charge_discharge_time_10", 4),
+            ("setting_hourly_charge_discharge_time_11", 6),
+            ("setting_hourly_charge_discharge_time_12", 8),
+            ("setting_hourly_charge_discharge_time_13", 10),
+            ("setting_hourly_charge_discharge_time_14", 12),
+            ("setting_hourly_charge_discharge_time_15", 14),
+        ],
+        128: [
+            ("setting_hourly_charge_discharge_time_16", 0),
+            ("setting_hourly_charge_discharge_time_17", 2),
+            ("setting_hourly_charge_discharge_time_18", 4),
+            ("setting_hourly_charge_discharge_time_19", 6),
+            ("setting_hourly_charge_discharge_time_20", 8),
+            ("setting_hourly_charge_discharge_time_21", 10),
+            ("setting_hourly_charge_discharge_time_22", 12),
+            ("setting_hourly_charge_discharge_time_23", 14),
+        ],
+        129: [
+            ("setting_hourly_charge_discharge_time_24", 0),
+            ("setting_hourly_charge_discharge_time_25", 2),
+            ("setting_hourly_charge_discharge_time_26", 4),
+            ("setting_hourly_charge_discharge_time_27", 6),
+            ("setting_hourly_charge_discharge_time_28", 8),
+            ("setting_hourly_charge_discharge_time_29", 10),
+            ("setting_hourly_charge_discharge_time_30", 12),
+            ("setting_hourly_charge_discharge_time_31", 14),
+        ],
+        130: [
+            ("setting_hourly_charge_discharge_time_32", 0),
+            ("setting_hourly_charge_discharge_time_33", 2),
+            ("setting_hourly_charge_discharge_time_34", 4),
+            ("setting_hourly_charge_discharge_time_35", 6),
+            ("setting_hourly_charge_discharge_time_36", 8),
+            ("setting_hourly_charge_discharge_time_37", 10),
+            ("setting_hourly_charge_discharge_time_38", 12),
+            ("setting_hourly_charge_discharge_time_39", 14),
+        ],
+        131: [
+            ("setting_hourly_charge_discharge_time_40", 0),
+            ("setting_hourly_charge_discharge_time_41", 2),
+            ("setting_hourly_charge_discharge_time_42", 4),
+            ("setting_hourly_charge_discharge_time_43", 6),
+            ("setting_hourly_charge_discharge_time_44", 8),
+            ("setting_hourly_charge_discharge_time_45", 10),
+            ("setting_hourly_charge_discharge_time_46", 12),
+            ("setting_hourly_charge_discharge_time_47", 14),
+        ],
         179: [
             ("setting_ufunctionen2_grid_peak_shaving", 7),
             ("setting_ufunctionen2_gen_peak_shaving", 8),
@@ -1094,6 +1241,9 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             ("setting_ufunctionen2_smart_load_en", 13),
             ("setting_ufunctionen2_rsd_disable", 14),
             ("setting_ufunctionen2_ongrid_always_on", 15),
+        ],
+        233: [
+            ("setting_ac_charge_sporadic_charge", 0),
         ],
     }
 

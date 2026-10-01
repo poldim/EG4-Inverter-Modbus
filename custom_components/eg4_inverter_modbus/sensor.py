@@ -76,7 +76,7 @@ async def async_setup_entry(
         
         for base_key, base_desc in BATTERY_SENSOR_DEFINITIONS.items():
             new_key = base_desc.key.format(prefix)
-            new_name = base_desc.name.format(battery_num)
+            new_name = base_desc.name.format(battery_num) if "{}" in base_desc.name else base_desc.name
             desc = replace(base_desc, key=new_key, name=new_name)
             
             is_enabled = desc.entity_registry_enabled_default
