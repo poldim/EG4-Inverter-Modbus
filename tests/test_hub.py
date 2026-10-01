@@ -1,5 +1,6 @@
 """Test Modbus Hub for EG4 Inverter Modbus."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -81,36 +82,55 @@ async def test_hub_discover_batteries(hass: HomeAssistant, mock_modbus_client):
 
 
 async def test_hub_write_register(hass: HomeAssistant, mock_modbus_client):
-    """Test hub write_register and write_masked_register (RMW)."""
+    """Test hub write_register and write_masked_register (RMW) via executor and poll loop."""
     hub = EG4ModbusHub(hass, "Test Hub", "10.0.0.100", 502, 1, 10)
+    hub._kwargs = {"device_id": 1}
     
     # 1. Test standard successful write
     mock_modbus_client.write_register.return_value = MagicMock(isError=MagicMock(return_value=False))
-    assert hub.write_register(100, 200) is True
+    write_fut = hass.async_add_executor_job(hub.write_register, 100, 200)
+    await asyncio.sleep(0.01)
+    await hub._async_update_data()
+    assert await write_fut is True
     mock_modbus_client.write_register.assert_called_with(address=100, value=200, **hub._kwargs)
     
     # 2. Test failed write (returns error response)
     mock_modbus_client.write_register.return_value = MagicMock(isError=MagicMock(return_value=True))
-    assert hub.write_register(100, 200) is False
+    write_fut = hass.async_add_executor_job(hub.write_register, 100, 200)
+    await asyncio.sleep(0.01)
+    await hub._async_update_data()
+    assert await write_fut is False
     
     # 3. Test failed write due to connection exception
     mock_modbus_client.write_register.side_effect = ConnectionException("Modbus connection lost")
-    assert hub.write_register(100, 200) is False
+    write_fut = hass.async_add_executor_job(hub.write_register, 100, 200)
+    await asyncio.sleep(0.01)
+    await hub._async_update_data()
+    assert await write_fut is False
     
     # Reset side effect
     mock_modbus_client.write_register.side_effect = None
     
     # 4. Test write_masked_register (Read-Modify-Write)
-    # Mask = 0x00F0, value = 5 -> (5 << 4) = 0x0050. Old register value = 0x1234
-    # Expected: (0x1234 & ~0x00F0) | 0x0050 = 0x1204 | 0x0050 = 0x1254
-    mock_modbus_client.read_holding_registers.return_value = MagicMock(
-        isError=MagicMock(return_value=False),
-        registers=[0x1234]
-    )
+    # Mask = 0x00F0, value = 5 -> (5 << 4) = 0x0050.
+    # Old register value = (2 << 8) | (3 << 4) | 4 = 0x0234
+    # Expected: (0x0234 & ~0x00F0) | 0x0050 = 0x0254
+    hub._REG_BIT_FIELDS[150] = [("field_a", 0), ("field_b", 4), ("field_c", 8)]
+    hub.data["field_a"] = 4
+    hub.data["field_b"] = 3
+    hub.data["field_c"] = 2
     mock_modbus_client.write_register.return_value = MagicMock(isError=MagicMock(return_value=False))
     
-    assert hub.write_masked_register(150, 5, 0x00F0) is True
-    mock_modbus_client.write_register.assert_called_with(address=150, value=0x1254, **hub._kwargs)
+    write_masked_fut = hass.async_add_executor_job(hub.write_masked_register, 150, 5, 0x00F0)
+    await asyncio.sleep(0.01)
+    await hub._async_update_data()
+    assert await write_masked_fut is True
+    mock_modbus_client.write_register.assert_called_with(address=150, value=0x0254, **hub._kwargs)
+
+    hub.close()
+    await hub.async_shutdown()
+
+
 
 
 async def test_hub_sync_update_data_and_spike_filter(hass: HomeAssistant, mock_modbus_client):
