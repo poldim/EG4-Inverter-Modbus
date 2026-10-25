@@ -201,7 +201,45 @@ Voltage PV3
 
 
 
-### Experimental and NOT RECOMMENDED - Inverter configuration sensors, use at your own risk!
+### Inverter Controls & Configuration Settings
+
+#### Controls (Device Card)
+Operational switches and toggles for immediate inverter control:
+
+```yaml
+AC Charge
+AC Force Charge
+AC Forced Discharge
+Forced Discharge Export PV Only
+Seamless Switching
+Seamless Switching when Grid On
+Standby Mode
+```
+
+#### Schedules & Thresholds (Configuration Group)
+Time schedules and cutoff thresholds for battery charging, peak shaving, and forced discharge:
+
+```yaml
+AC Charge Rate
+AC Charging SOC Limit
+AC Charge T1 Start Time
+AC Charge T1 End Time
+AC Charge T2 Start Time
+AC Charge T2 End Time
+AC Charge T3 Start Time
+AC Charge T3 End Time
+Forced Discharge Power
+Forced Discharge Stop SOC
+Forced Discharge Voltage Limit
+Forced Discharge T1 Start Time
+Forced Discharge T1 End Time
+Forced Discharge T2 Start Time
+Forced Discharge T2 End Time
+Forced Discharge T3 Start Time
+Forced Discharge T3 End Time
+```
+
+### Inverter Configuration Parameters (Use at your own risk)
 
 ```yaml
 AC Charge Battery Current
