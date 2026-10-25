@@ -793,7 +793,13 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                             val = decoder.decode_16bit_uint()
                             data[f"setting_ac_charge_{slot}_hour"] = val & 0xFF
                             data[f"setting_ac_charge_{slot}_minute"] = (val >> 8) & 0xFF
-                        decoder.skip_registers(16)
+                        decoder.skip_registers(8)  # Registers 74-81
+                        data["setting_forced_discharge_power"] = decoder.decode_16bit_uint() / 10.0  # Register 82 (kW)
+                        data["setting_forced_discharge_stop_soc"] = decoder.decode_16bit_uint()  # Register 83 (%)
+                        for slot in ("t1_start", "t1_end", "t2_start", "t2_end", "t3_start", "t3_end"):
+                            val = decoder.decode_16bit_uint()  # Registers 84-89
+                            data[f"setting_forced_discharge_{slot}_hour"] = val & 0xFF
+                            data[f"setting_forced_discharge_{slot}_minute"] = (val >> 8) & 0xFF
                         data["setting_voltage_inverter"] = decoder.decode_16bit_uint()
                         data["setting_frequency_inverter"] = decoder.decode_16bit_uint()
                         decoder.skip_registers(7)
@@ -963,6 +969,8 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                     if not result.isError():
                         updated = True
                         val = result.registers[0]
+                        data["_raw_holding_179"] = val
+                        data["setting_ufunctionen2_export_pv_only"] = (val >> 3) & 1
                         data["setting_ufunctionen2_grid_peak_shaving"] = (val >> 7) & 1
                         data["setting_ufunctionen2_gen_peak_shaving"] = (val >> 8) & 1
                         data["setting_ufunctionen2_bat_chg_control"] = (val >> 9) & 1
@@ -1232,6 +1240,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
             ("setting_hourly_charge_discharge_time_47", 14),
         ],
         179: [
+            ("setting_ufunctionen2_export_pv_only", 3),
             ("setting_ufunctionen2_grid_peak_shaving", 7),
             ("setting_ufunctionen2_gen_peak_shaving", 8),
             ("setting_ufunctionen2_bat_chg_control", 9),
@@ -1269,7 +1278,9 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
         Reads the current register value from the last poll cache (no live
         Modbus read required), applies the mask, then queues the write.
         """
-        current_val = self._reconstruct_register(address)
+        current_val = self.data.get(f"_raw_holding_{address}")
+        if current_val is None:
+            current_val = self._reconstruct_register(address)
         if current_val is None:
             _LOGGER.error(
                 f"Could not reconstruct register {address} from cache for RMW. "
@@ -1288,7 +1299,10 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
 
         _LOGGER.debug(f"RMW Address {address}: CachedOld={current_val:#06x}, Mask={mask:#06x}, Shift={shift}, NewVal={new_val:#06x}")
 
-        return self.write_register(address, new_val)
+        success = self.write_register(address, new_val)
+        if success:
+            self.data[f"_raw_holding_{address}"] = new_val
+        return success
 
     def translate_bitmask_to_messages(self, code: int, message_map: dict) -> str:
         """Translate a bitmask code into a comma-separated string of messages."""
