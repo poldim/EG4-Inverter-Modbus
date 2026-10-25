@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 
 from custom_components.eg4_inverter_modbus.binary_sensor import EG4BinarySensor
 from custom_components.eg4_inverter_modbus.const import (
@@ -341,7 +342,8 @@ async def test_ac_charge_time_slots_and_sporadic_charge(test_hub):
         assert desc.key == key
         assert desc.name == name
         assert desc.address == addr
-        assert desc.entity_category is None
+        from homeassistant.helpers.entity import EntityCategory
+        assert desc.entity_category == EntityCategory.CONFIG
         assert desc.entity_registry_enabled_default is True
         assert desc.icon == icon
 
@@ -414,6 +416,103 @@ async def test_ac_charge_time_slots_and_sporadic_charge(test_hub):
         await entity_sporadic.async_select_option("Enabled")
         mock_masked_write.assert_called_once_with(233, 1, 0x0001)
         assert test_hub.data["setting_ac_charge_sporadic_charge"] == 1
+
+
+async def test_forced_discharge_and_export_pv_only_entities(test_hub):
+    """Test Forced Discharge (regs 82-89) and Export PV Only (reg 179 bit 3) entity configurations and behaviors."""
+    from custom_components.eg4_inverter_modbus.const import HOLDING_REGISTERS
+
+    async def mock_executor(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    # 1. Forced Discharge Export PV Only (Select, Reg 179 bit 3)
+    desc_export_pv = HOLDING_REGISTERS[17903]
+    assert desc_export_pv.name == "Forced Discharge Export PV Only"
+    assert desc_export_pv.key == "setting_ufunctionen2_export_pv_only"
+    assert desc_export_pv.bit_mask == 0x0008
+    assert desc_export_pv.entity_category is None
+
+    dev_info = test_hub.get_device_info(desc_export_pv.key, desc_export_pv.entity_category)
+    export_entity = EG4Select(test_hub, dev_info, desc_export_pv, 179, True)
+    export_entity.hass = MagicMock()
+    export_entity.hass.async_add_executor_job = AsyncMock(side_effect=mock_executor)
+    export_entity.async_write_ha_state = MagicMock()
+
+    test_hub.data["setting_ufunctionen2_export_pv_only"] = 1
+    assert export_entity.current_option == "Enabled"
+
+    with patch.object(test_hub, "write_masked_register", return_value=True) as mock_masked_write:
+        await export_entity.async_select_option("Disabled")
+        mock_masked_write.assert_called_once_with(179, 0, 0x0008)
+        assert test_hub.data["setting_ufunctionen2_export_pv_only"] == 0
+
+    # 2. Forced Discharge Power (Number, Reg 82)
+    desc_pwr = HOLDING_REGISTERS[82]
+    assert desc_pwr.name == "Forced Discharge Power"
+    assert desc_pwr.scale == 0.1
+    pwr_entity = EG4Number(test_hub, dev_info, desc_pwr, 82, True)
+    pwr_entity.hass = MagicMock()
+    pwr_entity.hass.async_add_executor_job = AsyncMock(side_effect=mock_executor)
+    pwr_entity.async_write_ha_state = MagicMock()
+
+    test_hub.data["setting_forced_discharge_power"] = 8.0
+    assert pwr_entity.native_value == 8.0
+
+    with patch.object(test_hub, "write_register", return_value=True) as mock_write:
+        await pwr_entity.async_set_native_value(8.0)
+        mock_write.assert_called_once_with(82, 80)
+        assert test_hub.data["setting_forced_discharge_power"] == 8.0
+
+    # 2.5 AC Forced Discharge (Select, Reg 21 bit 10)
+    desc_forced_dischg = HOLDING_REGISTERS[2111]
+    assert desc_forced_dischg.name == "AC Forced Discharge"
+    assert desc_forced_dischg.entity_category is None
+
+    # Standby Mode (Select, Reg 21 bit 9)
+    assert HOLDING_REGISTERS[2110].name == "Standby Mode"
+    assert HOLDING_REGISTERS[2110].entity_category is None
+
+    # 3. Forced Discharge Stop SOC (Number, Reg 83)
+    desc_soc = HOLDING_REGISTERS[83]
+    assert desc_soc.name == "Forced Discharge Stop SOC"
+    assert desc_soc.scale == 1.0
+    soc_entity = EG4Number(test_hub, dev_info, desc_soc, 83, True)
+    soc_entity.hass = MagicMock()
+    soc_entity.hass.async_add_executor_job = AsyncMock(side_effect=mock_executor)
+    soc_entity.async_write_ha_state = MagicMock()
+
+    test_hub.data["setting_forced_discharge_stop_soc"] = 81
+    assert soc_entity.native_value == 81
+
+    with patch.object(test_hub, "write_register", return_value=True) as mock_write:
+        await soc_entity.async_set_native_value(81)
+        mock_write.assert_called_once_with(83, 81)
+        assert test_hub.data["setting_forced_discharge_stop_soc"] == 81
+
+    # 4. Forced Discharge T1-T3 Start/End Times (Time, Regs 84-89)
+    for reg, slot, default_time in [
+        (84, "t1_start", datetime.time(15, 0)),
+        (85, "t1_end", datetime.time(21, 0)),
+        (86, "t2_start", datetime.time(22, 22)),
+        (87, "t2_end", datetime.time(23, 23)),
+        (88, "t3_start", datetime.time(23, 24)),
+        (89, "t3_end", datetime.time(23, 25)),
+    ]:
+        desc_time = HOLDING_REGISTERS[reg]
+        time_entity = EG4Time(test_hub, dev_info, desc_time, reg, True)
+        time_entity.hass = MagicMock()
+        time_entity.hass.async_add_executor_job = AsyncMock(side_effect=mock_executor)
+        time_entity.async_write_ha_state = MagicMock()
+
+        test_hub.data[f"setting_forced_discharge_{slot}_hour"] = default_time.hour
+        test_hub.data[f"setting_forced_discharge_{slot}_minute"] = default_time.minute
+        assert time_entity.native_value == default_time
+
+        expected_reg_val = (default_time.minute << 8) | default_time.hour
+        with patch.object(test_hub, "write_register", return_value=True) as mock_write:
+            await time_entity.async_set_value(default_time)
+            mock_write.assert_called_once_with(reg, expected_reg_val)
+
 
 
 
