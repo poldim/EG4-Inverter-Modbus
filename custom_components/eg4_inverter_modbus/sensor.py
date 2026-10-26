@@ -108,7 +108,7 @@ class EG4Sensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
         self._attr_unique_id = f"{hub.name}_{description.key}"
         self._attr_name = description.name
         self._attr_suggested_display_precision = description.suggested_display_precision
-        self._attr_entity_enabled_default = enabled_default  # <-- Use the argument
+        self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def native_value(self):

@@ -118,11 +118,15 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
                 # Checkbox checked: enable all write sensors
                 should_enable = True
             else:
-                # Checkbox unchecked: use default from entity description
-                should_enable = default_enabled_map.get(unique_id, False)
+                # Checkbox unchecked: disable all write sensors
+                should_enable = False
         
         # Update entity if needed
         if should_enable is not None:
+            # Respect entities explicitly disabled by the user
+            if entity_entry.disabled_by == er.RegistryEntryDisabler.USER:
+                continue
+
             is_currently_enabled = entity_entry.disabled_by is None
             if is_currently_enabled != should_enable:
                 registry.async_update_entity(

@@ -40,6 +40,9 @@ async def test_sensor_entity(test_hub):
     )
     device_info = {}
     sensor = EG4Sensor(test_hub, device_info, desc, True)
+    assert sensor.entity_registry_enabled_default is True
+    sensor_disabled = EG4Sensor(test_hub, device_info, desc, False)
+    assert sensor_disabled.entity_registry_enabled_default is False
     
     # Check default/missing value
     assert sensor.native_value is None
@@ -84,6 +87,9 @@ async def test_binary_sensor_entity(test_hub):
     )
     device_info = {}
     binary_sensor = EG4BinarySensor(test_hub, device_info, desc, True)
+    assert binary_sensor.entity_registry_enabled_default is True
+    binary_sensor_disabled = EG4BinarySensor(test_hub, device_info, desc, False)
+    assert binary_sensor_disabled.entity_registry_enabled_default is False
     
     # Missing value
     assert binary_sensor.is_on is None
@@ -106,6 +112,9 @@ async def test_number_entity(test_hub, mock_modbus_client):
     )
     device_info = {}
     number = EG4Number(test_hub, device_info, desc, 64, True)
+    assert number.entity_registry_enabled_default is True
+    number_disabled = EG4Number(test_hub, device_info, desc, 64, False)
+    assert number_disabled.entity_registry_enabled_default is False
     number.hass = MagicMock()
     number.hass.async_add_executor_job = AsyncMock(return_value=True)
     number.async_write_ha_state = MagicMock()
@@ -165,6 +174,9 @@ async def test_select_entity(test_hub):
     )
     device_info = {}
     select = EG4Select(test_hub, device_info, desc, 80, True)
+    assert select.entity_registry_enabled_default is True
+    select_disabled = EG4Select(test_hub, device_info, desc, 80, False)
+    assert select_disabled.entity_registry_enabled_default is False
     select.hass = MagicMock()
     select.hass.async_add_executor_job = AsyncMock(return_value=True)
     select.async_write_ha_state = MagicMock()
@@ -192,6 +204,9 @@ async def test_time_entity_peak_shaving_logic(test_hub):
     )
     device_info = {}
     time_entity = EG4Time(test_hub, device_info, desc, 209, True)
+    assert time_entity.entity_registry_enabled_default is True
+    time_entity_disabled = EG4Time(test_hub, device_info, desc, 209, False)
+    assert time_entity_disabled.entity_registry_enabled_default is False
     time_entity.hass = MagicMock()
     time_entity.hass.async_add_executor_job = AsyncMock(return_value=True)
     time_entity.async_write_ha_state = MagicMock()

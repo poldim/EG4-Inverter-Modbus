@@ -40,8 +40,8 @@ async def async_setup_entry(
             if not isinstance(address, int):
                 continue
 
-            # Calculate the desired state without modifying the global description
-            is_enabled = description.entity_registry_enabled_default
+            # Only enable if enable_write_sensors is True
+            is_enabled = False
             if enable_write_sensors:
                 is_enabled = True
 
@@ -73,7 +73,7 @@ class EG4Select(CoordinatorEntity[EG4ModbusHub], SelectEntity):
         self._attr_device_info = device_info
         self._attr_unique_id = f"{hub.name}_{description.key}"
         self._attr_name = description.name
-        self._attr_entity_enabled_default = enabled_default
+        self._attr_entity_registry_enabled_default = enabled_default
         self._address = address
 
     @property
