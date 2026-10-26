@@ -80,6 +80,7 @@ class EG4ModbusSelectEntityDescription(SelectEntityDescription):
 class EG4ModbusTimeEntityDescription(TimeEntityDescription):
     """Describes EG4 Modbus time entity."""
     entity_category: Optional[EntityCategory] = EntityCategory.CONFIG
+    entity_registry_enabled_default: bool = False
     address: Optional[int] = None
 
 
