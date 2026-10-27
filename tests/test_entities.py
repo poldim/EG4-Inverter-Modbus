@@ -568,6 +568,20 @@ async def test_readonly_holding_sensors(test_hub):
     test_hub.data["setting_forced_discharge_t1_start_minute"] = 0
     assert sensor_time.native_value == "15:00"
 
+    # Verify that capability_attributes does not raise AttributeError for any holding register mirror sensor
+    from custom_components.eg4_inverter_modbus.const import (
+        EG4ModbusNumberEntityDescription,
+        EG4ModbusSelectEntityDescription,
+        EG4ModbusTimeEntityDescription,
+    )
+    for desc in HOLDING_REGISTERS.values():
+        if isinstance(desc, (EG4ModbusNumberEntityDescription, EG4ModbusSelectEntityDescription, EG4ModbusTimeEntityDescription)):
+            dev_i = test_hub.get_device_info(desc.key, desc.entity_category)
+            s = EG4ReadOnlyHoldingSensor(test_hub, dev_i, desc, True)
+            assert s.capability_attributes is not None or s.capability_attributes is None
+            assert s.state_attributes is not None or s.state_attributes is None
+            assert s.extra_state_attributes is not None or s.extra_state_attributes is None
+
 
 
 
