@@ -6,6 +6,7 @@ from typing import Any, Union
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -157,11 +158,17 @@ class EG4ReadOnlyHoldingSensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
         scale = getattr(description, "scale", 1.0)
         precision = 1 if scale != 1.0 else (0 if unit is not None else None)
 
+        category = description.entity_category
+        if category == EntityCategory.CONFIG:
+            category = EntityCategory.DIAGNOSTIC
+
+        self._attr_entity_category = category
+
         self.entity_description = SensorEntityDescription(
             key=description.key,
             name=description.name,
             icon=description.icon,
-            entity_category=description.entity_category,
+            entity_category=category,
             entity_registry_enabled_default=enabled_default,
             native_unit_of_measurement=unit,
             device_class=dev_class,

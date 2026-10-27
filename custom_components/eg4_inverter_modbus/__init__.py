@@ -12,6 +12,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import (
     DOMAIN, 
@@ -124,6 +125,9 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
             # Read-only mirror sensor for a writable holding register:
             # Enabled if enable_write_sensors is False (unchecked), disabled if True
             should_enable = not enable_write_sensors
+            # Fix existing registry entries if they were previously saved with EntityCategory.CONFIG
+            if entity_entry.entity_category in (EntityCategory.CONFIG, "config"):
+                registry.async_update_entity(entity_id, entity_category=EntityCategory.DIAGNOSTIC)
         elif domain == "sensor" or domain == "binary_sensor":
             if enable_read_sensors:
                 # Checkbox checked: enable all read sensors

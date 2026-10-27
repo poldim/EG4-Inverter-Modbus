@@ -176,6 +176,7 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
     assert len(mirror_sensors) > 0
     for entity in mirror_sensors:
         assert entity.entity_registry_enabled_default is True, f"{entity.unique_id} read-only mirror sensor disabled by default when unchecked!"
+        assert entity.entity_category != er.EntityCategory.CONFIG, f"{entity.unique_id} sensor entity category cannot be CONFIG!"
 
     # 2. Test platform setup with enable_write_sensors = True
     new_options["enable_write_sensors"] = True
@@ -231,19 +232,21 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
         )
         registered_write_entries.append(entry_reg)
 
-        # Pre-populate mirror read-only sensor as currently disabled in registry
+        # Pre-populate mirror read-only sensor as currently disabled and with CONFIG category in registry
         mirror_reg = registry.async_get_or_create(
             domain="sensor",
             platform=DOMAIN,
             unique_id=uid,
             config_entry=mock_config_entry,
             disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+            entity_category=er.EntityCategory.CONFIG,
         )
         registered_mirror_entries.append(mirror_reg)
 
     # When enable_write_sensors is False:
     # - writable entities must be disabled
     # - read-only mirror sensors must be enabled
+    # - any mirror sensors erroneously saved with CONFIG category must be migrated to DIAGNOSTIC
     await _update_entity_registry(hass, mock_config_entry)
 
     for entry_reg in registered_write_entries:
@@ -253,6 +256,8 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
     for mirror_reg in registered_mirror_entries:
         item = registry.async_get(mirror_reg.entity_id)
         assert item.disabled_by is None, f"{mirror_reg.unique_id} read-only mirror was not enabled!"
+        assert item.entity_category != er.EntityCategory.CONFIG, f"{mirror_reg.unique_id} still has CONFIG category!"
+        assert item.entity_category == er.EntityCategory.DIAGNOSTIC, f"{mirror_reg.unique_id} not migrated to DIAGNOSTIC!"
 
     # 4. When enable_write_sensors is toggled to True:
     # - writable entities must be enabled
