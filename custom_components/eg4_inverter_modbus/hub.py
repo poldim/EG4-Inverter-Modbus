@@ -807,7 +807,7 @@ class EG4ModbusHub(DataUpdateCoordinator[dict]):
                         data["setting_voltage_discharge_cutoff"] = decoder.decode_16bit_uint() / 10.0
                         data["setting_current_charge"] = decoder.decode_16bit_uint()
                         data["setting_current_discharge"] = decoder.decode_16bit_uint()
-                        data["setting_max_backflow_power"] = decoder.decode_16bit_uint()
+                        data["setting_grid_export_power_limit"] = decoder.decode_16bit_uint() / 10.0
                         decoder.skip_registers(1)
                         data["setting_eod_soc"] = decoder.decode_16bit_uint()
                         data["setting_temp_low_limit_discharge"] = decoder.decode_16bit_int() / 10.0

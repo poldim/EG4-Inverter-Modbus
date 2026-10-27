@@ -72,13 +72,20 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
     registry = er.async_get(hass)
     enable_read_sensors = entry.options.get(CONF_ENABLE_ALL_READ_SENSORS, False)
     enable_write_sensors = entry.options.get(CONF_ENABLE_WRITE_SENSORS, False)
+    name = entry.data[CONF_NAME]
     
+    # Clean up obsolete setting_max_backflow_power entities if present
+    for old_domain in ("number", "sensor"):
+        old_unique_id = f"{name}_setting_max_backflow_power"
+        if old_ent_id := registry.async_get_entity_id(old_domain, DOMAIN, old_unique_id):
+            registry.async_remove(old_ent_id)
+            _LOGGER.info("Removed obsolete entity %s with unique_id %s", old_ent_id, old_unique_id)
+
     # Get all entities for this entry
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
     
     # Build a map of unique_id -> default enabled state from entity descriptions
     default_enabled_map = {}
-    name = entry.data[CONF_NAME]
     
     # Check input registers (sensors/binary_sensors)
     for desc in INPUT_REGISTERS.values():
@@ -112,6 +119,8 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
 
     for entity_entry in entities:
         entity_id = entity_entry.entity_id
+        if not registry.async_get(entity_id):
+            continue
         domain = entity_entry.domain
         unique_id = entity_entry.unique_id
         

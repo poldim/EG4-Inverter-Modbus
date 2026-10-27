@@ -289,3 +289,15 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
         item = registry.async_get(mirror_reg.entity_id)
         assert item.disabled_by is None, f"{mirror_reg.unique_id} read-only mirror was not re-enabled on toggle off!"
 
+    # 6. Verify obsolete setting_max_backflow_power is removed from registry
+    old_backflow_entry = registry.async_get_or_create(
+        domain="number",
+        platform=DOMAIN,
+        unique_id=f"{name}_setting_max_backflow_power",
+        config_entry=mock_config_entry,
+    )
+    assert registry.async_get(old_backflow_entry.entity_id) is not None
+    await _update_entity_registry(hass, mock_config_entry)
+    assert registry.async_get(old_backflow_entry.entity_id) is None
+
+
