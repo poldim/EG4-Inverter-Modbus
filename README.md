@@ -37,6 +37,13 @@ This integration allows you to:
 2. Search for **"EG4 Inverter Modbus"**
 3. Enter the name for your inverter, host IP, port, and slave for your inverter
 
+### Integration Options
+In **Settings** → **Devices & Services** → **EG4 Inverter Modbus** → **Configure**:
+- **Enable All Read Sensors**: Enables all diagnostic and secondary sensors by default.
+- **Enable Write Sensors (AT YOUR OWN RISK)**:
+  - **When checked**: Holding registers are exposed as interactive writable entities (`number`, `select`, `time`) allowing direct control over inverter parameters.
+  - **When unchecked (default)**: Holding registers are exposed as safe read-only `sensor` entities so you can monitor current settings without risking accidental writes.
+
 
 ## Background
 
