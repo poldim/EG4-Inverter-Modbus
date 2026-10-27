@@ -529,5 +529,46 @@ async def test_forced_discharge_and_export_pv_only_entities(test_hub):
             mock_write.assert_called_once_with(reg, expected_reg_val)
 
 
+async def test_readonly_holding_sensors(test_hub):
+    """Test read-only mirror sensors for writable holding registers."""
+    from custom_components.eg4_inverter_modbus.sensor import EG4ReadOnlyHoldingSensor
+    from custom_components.eg4_inverter_modbus.const import HOLDING_REGISTERS
+    from homeassistant.const import UnitOfPower, PERCENTAGE
+
+    # 1. Number register: Forced Discharge Power (reg 82)
+    desc_pwr = HOLDING_REGISTERS[82]
+    dev_info = test_hub.get_device_info(desc_pwr.key, desc_pwr.entity_category)
+    sensor_pwr = EG4ReadOnlyHoldingSensor(test_hub, dev_info, desc_pwr, True)
+    assert sensor_pwr.name == "Forced Discharge Power"
+    assert sensor_pwr.native_unit_of_measurement == UnitOfPower.KILO_WATT
+    test_hub.data["setting_forced_discharge_power"] = 8.0
+    assert sensor_pwr.native_value == 8.0
+
+    # 2. Select register: AC Forced Discharge (reg 21 bit 10)
+    desc_dischg = HOLDING_REGISTERS[2111]
+    sensor_dischg = EG4ReadOnlyHoldingSensor(test_hub, dev_info, desc_dischg, True)
+    assert sensor_dischg.name == "AC Forced Discharge"
+    test_hub.data["setting_func_en_forced_dischg"] = 0
+    assert sensor_dischg.native_value == "Disabled"
+    test_hub.data["setting_func_en_forced_dischg"] = 1
+    assert sensor_dischg.native_value == "Enabled"
+
+    # 3. Select register: Forced Discharge Export PV Only (reg 179 bit 3)
+    desc_export = HOLDING_REGISTERS[17903]
+    sensor_export = EG4ReadOnlyHoldingSensor(test_hub, dev_info, desc_export, True)
+    assert sensor_export.name == "Forced Discharge Export PV Only"
+    test_hub.data["setting_ufunctionen2_export_pv_only"] = 1
+    assert sensor_export.native_value == "Enabled"
+
+    # 4. Time register: Forced Discharge T1 Start Time (reg 84)
+    desc_time = HOLDING_REGISTERS[84]
+    sensor_time = EG4ReadOnlyHoldingSensor(test_hub, dev_info, desc_time, True)
+    assert sensor_time.name == "Forced Discharge T1 Start Time"
+    test_hub.data["setting_forced_discharge_t1_start_hour"] = 15
+    test_hub.data["setting_forced_discharge_t1_start_minute"] = 0
+    assert sensor_time.native_value == "15:00"
+
+
+
 
 

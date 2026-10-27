@@ -132,10 +132,14 @@ async def test_update_entity_registry_toggles(hass: HomeAssistant, mock_modbus_c
 
 
 async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass: HomeAssistant, mock_modbus_client, mock_config_entry):
-    """Test that unchecking 'Enable Write Sensors' disables ALL write entities (numbers, selects, times)."""
+    """Test that toggling 'Enable Write Sensors' swaps between writable entities and read-only sensors."""
     from custom_components.eg4_inverter_modbus.number import async_setup_entry as async_setup_number
     from custom_components.eg4_inverter_modbus.select import async_setup_entry as async_setup_select
     from custom_components.eg4_inverter_modbus.time import async_setup_entry as async_setup_time
+    from custom_components.eg4_inverter_modbus.sensor import (
+        async_setup_entry as async_setup_sensor,
+        EG4ReadOnlyHoldingSensor,
+    )
 
     mock_config_entry.add_to_hass(hass)
     registry = er.async_get(hass)
@@ -152,10 +156,12 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
     added_numbers = []
     added_selects = []
     added_times = []
+    added_sensors = []
 
     await async_setup_number(hass, mock_config_entry, lambda entities: added_numbers.extend(entities))
     await async_setup_select(hass, mock_config_entry, lambda entities: added_selects.extend(entities))
     await async_setup_time(hass, mock_config_entry, lambda entities: added_times.extend(entities))
+    await async_setup_sensor(hass, mock_config_entry, lambda entities: added_sensors.extend(entities))
 
     assert len(added_numbers) > 0
     assert len(added_selects) > 0
@@ -163,9 +169,40 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
 
     # All write entities must have entity_registry_enabled_default as False when unchecked
     for entity in added_numbers + added_selects + added_times:
-        assert entity.entity_registry_enabled_default is False, f"{entity.unique_id} enabled by default!"
+        assert entity.entity_registry_enabled_default is False, f"{entity.unique_id} write entity enabled by default when unchecked!"
 
-    # 2. Test _update_entity_registry when write entities are registered and user unchecks the option
+    # Mirror sensors for writable registers must have entity_registry_enabled_default as True when unchecked
+    mirror_sensors = [s for s in added_sensors if isinstance(s, EG4ReadOnlyHoldingSensor)]
+    assert len(mirror_sensors) > 0
+    for entity in mirror_sensors:
+        assert entity.entity_registry_enabled_default is True, f"{entity.unique_id} read-only mirror sensor disabled by default when unchecked!"
+
+    # 2. Test platform setup with enable_write_sensors = True
+    new_options["enable_write_sensors"] = True
+    hass.config_entries.async_update_entry(mock_config_entry, options=new_options)
+
+    added_numbers_true = []
+    added_selects_true = []
+    added_times_true = []
+    added_sensors_true = []
+
+    await async_setup_number(hass, mock_config_entry, lambda entities: added_numbers_true.extend(entities))
+    await async_setup_select(hass, mock_config_entry, lambda entities: added_selects_true.extend(entities))
+    await async_setup_time(hass, mock_config_entry, lambda entities: added_times_true.extend(entities))
+    await async_setup_sensor(hass, mock_config_entry, lambda entities: added_sensors_true.extend(entities))
+
+    for entity in added_numbers_true + added_selects_true + added_times_true:
+        assert entity.entity_registry_enabled_default is True, f"{entity.unique_id} write entity disabled by default when checked!"
+
+    mirror_sensors_true = [s for s in added_sensors_true if isinstance(s, EG4ReadOnlyHoldingSensor)]
+    for entity in mirror_sensors_true:
+        assert entity.entity_registry_enabled_default is False, f"{entity.unique_id} read-only mirror sensor enabled by default when checked!"
+
+    # Reset back to False for registry toggle testing
+    new_options["enable_write_sensors"] = False
+    hass.config_entries.async_update_entry(mock_config_entry, options=new_options)
+
+    # 3. Test _update_entity_registry when write entities and mirror sensors are registered
     sample_write_unique_ids = [
         # Controls (selects)
         ("select", f"{name}_setting_func_en_forced_dischg"),
@@ -182,39 +219,68 @@ async def test_unchecking_enable_write_sensors_disables_all_write_entities(hass:
         ("time", f"{name}_setting_peak_shaving_a_start"),
     ]
 
-    registered_entries = []
+    registered_write_entries = []
+    registered_mirror_entries = []
     for domain, uid in sample_write_unique_ids:
-        # Pre-populate as currently enabled in registry
+        # Pre-populate write entity as currently enabled in registry
         entry_reg = registry.async_get_or_create(
             domain=domain,
             platform=DOMAIN,
             unique_id=uid,
             config_entry=mock_config_entry,
         )
-        registered_entries.append(entry_reg)
+        registered_write_entries.append(entry_reg)
 
-    # When enable_write_sensors is False, _update_entity_registry must disable every single one
+        # Pre-populate mirror read-only sensor as currently disabled in registry
+        mirror_reg = registry.async_get_or_create(
+            domain="sensor",
+            platform=DOMAIN,
+            unique_id=uid,
+            config_entry=mock_config_entry,
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+        )
+        registered_mirror_entries.append(mirror_reg)
+
+    # When enable_write_sensors is False:
+    # - writable entities must be disabled
+    # - read-only mirror sensors must be enabled
     await _update_entity_registry(hass, mock_config_entry)
 
-    for entry_reg in registered_entries:
+    for entry_reg in registered_write_entries:
         item = registry.async_get(entry_reg.entity_id)
         assert item.disabled_by == er.RegistryEntryDisabler.INTEGRATION, f"{entry_reg.unique_id} was not disabled!"
 
-    # 3. When enable_write_sensors is toggled to True, they must all be re-enabled
+    for mirror_reg in registered_mirror_entries:
+        item = registry.async_get(mirror_reg.entity_id)
+        assert item.disabled_by is None, f"{mirror_reg.unique_id} read-only mirror was not enabled!"
+
+    # 4. When enable_write_sensors is toggled to True:
+    # - writable entities must be enabled
+    # - read-only mirror sensors must be disabled
     new_options["enable_write_sensors"] = True
     hass.config_entries.async_update_entry(mock_config_entry, options=new_options)
     await _update_entity_registry(hass, mock_config_entry)
 
-    for entry_reg in registered_entries:
+    for entry_reg in registered_write_entries:
         item = registry.async_get(entry_reg.entity_id)
         assert item.disabled_by is None, f"{entry_reg.unique_id} was not re-enabled!"
 
-    # 4. When enable_write_sensors is unchecked again (False), they must all be disabled again
+    for mirror_reg in registered_mirror_entries:
+        item = registry.async_get(mirror_reg.entity_id)
+        assert item.disabled_by == er.RegistryEntryDisabler.INTEGRATION, f"{mirror_reg.unique_id} read-only mirror was not disabled!"
+
+    # 5. When enable_write_sensors is unchecked again (False):
+    # - writable entities must be disabled again
+    # - read-only mirror sensors must be re-enabled
     new_options["enable_write_sensors"] = False
     hass.config_entries.async_update_entry(mock_config_entry, options=new_options)
     await _update_entity_registry(hass, mock_config_entry)
 
-    for entry_reg in registered_entries:
+    for entry_reg in registered_write_entries:
         item = registry.async_get(entry_reg.entity_id)
         assert item.disabled_by == er.RegistryEntryDisabler.INTEGRATION, f"{entry_reg.unique_id} was not disabled on toggle off!"
+
+    for mirror_reg in registered_mirror_entries:
+        item = registry.async_get(mirror_reg.entity_id)
+        assert item.disabled_by is None, f"{mirror_reg.unique_id} read-only mirror was not re-enabled on toggle off!"
 

@@ -89,7 +89,12 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
         unique_id = f"{name}_{desc.key}"
         default_enabled_map[unique_id] = desc.entity_registry_enabled_default
         
-    from .const import BATTERY_SENSOR_DEFINITIONS
+    from .const import (
+        BATTERY_SENSOR_DEFINITIONS,
+        EG4ModbusNumberEntityDescription,
+        EG4ModbusSelectEntityDescription,
+        EG4ModbusTimeEntityDescription,
+    )
     hub = hass.data[DOMAIN].get(entry.entry_id)
     if hub and hasattr(hub, 'battery_count'):
         for i in range(hub.battery_count):
@@ -97,7 +102,13 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
             for desc in BATTERY_SENSOR_DEFINITIONS.values():
                 unique_id = f"{name}_{desc.key.format(prefix)}"
                 default_enabled_map[unique_id] = desc.entity_registry_enabled_default
-    
+
+    writable_holding_keys = {
+        desc.key for desc in HOLDING_REGISTERS.values()
+        if isinstance(desc, (EG4ModbusNumberEntityDescription, EG4ModbusSelectEntityDescription, EG4ModbusTimeEntityDescription))
+    }
+    writable_unique_ids = {f"{name}_{key}" for key in writable_holding_keys}
+
     for entity_entry in entities:
         entity_id = entity_entry.entity_id
         domain = entity_entry.domain
@@ -106,20 +117,20 @@ async def _update_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> No
         # Determine if this entity should be enabled
         should_enable = None
         
-        if domain == "sensor" or domain == "binary_sensor":
+        if domain in ["number", "select", "time"]:
+            # Writable entities: enabled if enable_write_sensors is True, disabled if False
+            should_enable = enable_write_sensors
+        elif domain == "sensor" and unique_id in writable_unique_ids:
+            # Read-only mirror sensor for a writable holding register:
+            # Enabled if enable_write_sensors is False (unchecked), disabled if True
+            should_enable = not enable_write_sensors
+        elif domain == "sensor" or domain == "binary_sensor":
             if enable_read_sensors:
                 # Checkbox checked: enable all read sensors
                 should_enable = True
             else:
                 # Checkbox unchecked: use default from entity description
                 should_enable = default_enabled_map.get(unique_id, True)
-        elif domain in ["number", "select", "time"]:
-            if enable_write_sensors:
-                # Checkbox checked: enable all write sensors
-                should_enable = True
-            else:
-                # Checkbox unchecked: disable all write sensors
-                should_enable = False
         
         # Update entity if needed
         if should_enable is not None:
