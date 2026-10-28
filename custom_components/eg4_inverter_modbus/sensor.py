@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from typing import Union
+from typing import Any, Union
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -131,6 +132,7 @@ class EG4Sensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
 class EG4ReadOnlyHoldingSensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
     """Representation of a read-only mirror sensor for a writable holding register."""
 
+    entity_description: SensorEntityDescription
     _attr_has_entity_name = True
 
     def __init__(
@@ -146,28 +148,37 @@ class EG4ReadOnlyHoldingSensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
     ):
         """Initialize the read-only holding sensor."""
         super().__init__(coordinator=hub)
-        self.entity_description = description
+        self.holding_description = description
         self._attr_device_info = device_info
         self._attr_unique_id = f"{hub.name}_{description.key}"
         self._attr_name = description.name
-        self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_icon = description.icon
-        if description.entity_category is not None:
-            self._attr_entity_category = description.entity_category
 
-        if isinstance(description, EG4ModbusNumberEntityDescription):
-            self._attr_native_unit_of_measurement = description.native_unit_of_measurement
-            if description.device_class is not None:
-                self._attr_device_class = description.device_class
-            if description.scale != 1.0:
-                self._attr_suggested_display_precision = 1
-            else:
-                self._attr_suggested_display_precision = 0
+        unit = getattr(description, "native_unit_of_measurement", None)
+        dev_class = getattr(description, "device_class", None)
+        scale = getattr(description, "scale", 1.0)
+        precision = 1 if scale != 1.0 else (0 if unit is not None else None)
+
+        category = description.entity_category
+        if category == EntityCategory.CONFIG:
+            category = EntityCategory.DIAGNOSTIC
+
+        self._attr_entity_category = category
+
+        self.entity_description = SensorEntityDescription(
+            key=description.key,
+            name=description.name,
+            icon=description.icon,
+            entity_category=category,
+            entity_registry_enabled_default=enabled_default,
+            native_unit_of_measurement=unit,
+            device_class=dev_class,
+            suggested_display_precision=precision,
+        )
 
     @property
     def native_value(self):
         """Return the state of the read-only holding sensor."""
-        desc = self.entity_description
+        desc = self.holding_description
         if isinstance(desc, EG4ModbusSelectEntityDescription):
             val = self.coordinator.data.get(desc.key)
             if val is None:
@@ -201,3 +212,17 @@ class EG4ReadOnlyHoldingSensor(CoordinatorEntity[EG4ModbusHub], SensorEntity):
 
         # Number entity description
         return self.coordinator.data.get(desc.key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return device state attributes."""
+        attrs: dict[str, Any] = {}
+        val = self.coordinator.data.get(self.holding_description.key)
+        if self.holding_description.key == "setting_ac_couple_end_soc" and val is not None:
+            try:
+                if int(val) == 255:
+                    attrs["status"] = "Disabled"
+                    attrs["is_disabled"] = True
+            except (ValueError, TypeError):
+                pass
+        return attrs

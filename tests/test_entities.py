@@ -337,6 +337,45 @@ async def test_ac_charge_rate_number_entity(test_hub):
         assert test_hub.data["setting_ac_charge_rate"] == 8.0
 
 
+async def test_grid_export_power_limit_number_entity(test_hub):
+    """Test Register 103 Grid Export Power Limit number entity configuration in kW."""
+    from homeassistant.const import UnitOfPower
+    from custom_components.eg4_inverter_modbus.const import HOLDING_REGISTERS, EG4ModbusNumberEntityDescription
+
+    desc_103 = HOLDING_REGISTERS[103]
+    assert isinstance(desc_103, EG4ModbusNumberEntityDescription)
+    assert desc_103.name == "Grid Export Power Limit"
+    assert desc_103.key == "setting_grid_export_power_limit"
+    assert desc_103.native_unit_of_measurement == UnitOfPower.KILO_WATT
+    assert desc_103.scale == 0.1
+    assert desc_103.native_min_value == 0.0
+    assert desc_103.native_max_value == 25.0
+    assert desc_103.native_step == 0.1
+
+    # Device info check for Inverter Settings
+    dev_info = test_hub.get_device_info(desc_103.key, desc_103.entity_category)
+    assert dev_info["name"] == "Test Inverter Inverter Settings"
+
+    # Number entity creation and value read/write
+    entity = EG4Number(test_hub, dev_info, desc_103, 103, True)
+    entity.hass = MagicMock()
+    async def mock_executor(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    entity.hass.async_add_executor_job = AsyncMock(side_effect=mock_executor)
+    entity.async_write_ha_state = MagicMock()
+
+    # 80 raw -> 8.0 kW
+    test_hub.data["setting_grid_export_power_limit"] = 80 / 10.0
+    assert entity.native_value == 8.0
+
+    # Setting 8 kW writes 80 to register 103
+    with patch.object(test_hub, "write_register", return_value=True) as mock_write:
+        await entity.async_set_native_value(8.0)
+        mock_write.assert_called_once_with(103, 80)
+        assert test_hub.data["setting_grid_export_power_limit"] == 8.0
+
+
+
 async def test_ac_charge_time_slots_and_sporadic_charge(test_hub):
     """Test AC Charge time slots (T1, T2, T3) and sporadic charge select entity."""
     from custom_components.eg4_inverter_modbus.const import HOLDING_REGISTERS
@@ -567,6 +606,20 @@ async def test_readonly_holding_sensors(test_hub):
     test_hub.data["setting_forced_discharge_t1_start_hour"] = 15
     test_hub.data["setting_forced_discharge_t1_start_minute"] = 0
     assert sensor_time.native_value == "15:00"
+
+    # Verify that capability_attributes does not raise AttributeError for any holding register mirror sensor
+    from custom_components.eg4_inverter_modbus.const import (
+        EG4ModbusNumberEntityDescription,
+        EG4ModbusSelectEntityDescription,
+        EG4ModbusTimeEntityDescription,
+    )
+    for desc in HOLDING_REGISTERS.values():
+        if isinstance(desc, (EG4ModbusNumberEntityDescription, EG4ModbusSelectEntityDescription, EG4ModbusTimeEntityDescription)):
+            dev_i = test_hub.get_device_info(desc.key, desc.entity_category)
+            s = EG4ReadOnlyHoldingSensor(test_hub, dev_i, desc, True)
+            assert s.capability_attributes is not None or s.capability_attributes is None
+            assert s.state_attributes is not None or s.state_attributes is None
+            assert s.extra_state_attributes is not None or s.extra_state_attributes is None
 
 
 
